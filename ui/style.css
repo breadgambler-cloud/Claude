@@ -1,0 +1,252 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #202124;
+  --bg2: #292a2d;
+  --bg3: #35363a;
+  --fg: #e8eaed;
+  --fg-dim: #9aa0a6;
+  --accent: #8ab4f8;
+  --tab-active: #35363a;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px "Segoe UI", "Roboto", "Ubuntu", sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+#chrome { height: 96px; display: flex; flex-direction: column; }
+
+/* ---- tab strip ---- */
+#tabstrip {
+  height: 34px;
+  display: flex;
+  align-items: flex-end;
+  padding: 4px 6px 0 6px;
+  gap: 2px;
+  background: var(--bg);
+}
+#tabs { display: flex; gap: 2px; overflow: hidden; flex: 0 1 auto; }
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 60px;
+  max-width: 220px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 8px 8px 0 0;
+  background: var(--bg2);
+  cursor: default;
+  flex: 1 1 0;
+  overflow: hidden;
+}
+.tab.active { background: var(--tab-active); }
+.tab img.favicon { width: 14px; height: 14px; flex: none; }
+.tab .spinner {
+  width: 12px; height: 12px; flex: none;
+  border: 2px solid var(--fg-dim);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.tab .title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+.tab .close {
+  flex: none;
+  width: 16px; height: 16px;
+  line-height: 14px;
+  text-align: center;
+  border-radius: 50%;
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.tab .close:hover { background: #5f6368; color: var(--fg); }
+#newtab {
+  width: 26px; height: 26px;
+  margin-bottom: 2px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--fg);
+  font-size: 16px;
+  cursor: pointer;
+}
+#newtab:hover { background: var(--bg3); }
+
+/* ---- toolbar ---- */
+#toolbar {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  background: var(--tab-active);
+}
+#toolbar > button, #findbar button, #panel-header button {
+  width: 30px; height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--fg);
+  font-size: 15px;
+  cursor: pointer;
+}
+#toolbar > button:hover, #findbar button:hover { background: #4a4b4f; }
+#toolbar > button:disabled { color: #5f6368; cursor: default; background: transparent; }
+
+#omnibox-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  height: 30px;
+  background: var(--bg);
+  border-radius: 15px;
+  padding: 0 4px 0 14px;
+}
+#omnibox-wrap:focus-within { outline: 2px solid var(--accent); background: var(--bg2); }
+#omnibox {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 13px;
+}
+#star {
+  width: 26px; height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 15px;
+  cursor: pointer;
+}
+#star.bookmarked { color: var(--accent); }
+#star:hover { background: #4a4b4f; }
+
+/* ---- find bar ---- */
+#findbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg2);
+  border-radius: 15px;
+  padding: 2px 6px;
+}
+#findbar.hidden { display: none; }
+#findinput {
+  width: 160px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--fg);
+}
+#findcount { color: var(--fg-dim); font-size: 11px; min-width: 40px; text-align: center; }
+
+/* ---- bookmarks bar ---- */
+#bookmarksbar {
+  height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  background: var(--tab-active);
+  border-top: 1px solid var(--bg2);
+  overflow: hidden;
+}
+.bm {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 160px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 12px;
+}
+.bm:hover { background: #4a4b4f; }
+.bm img { width: 12px; height: 12px; }
+.bm span { overflow: hidden; text-overflow: ellipsis; }
+#bookmarksbar .empty { color: var(--fg-dim); font-size: 11px; }
+
+/* ---- omnibox suggestions ---- */
+#suggestions {
+  position: fixed;
+  top: 96px;
+  left: 0; right: 0;
+  background: var(--bg2);
+  border-bottom: 1px solid #000;
+  z-index: 10;
+  max-height: 300px;
+  overflow-y: auto;
+}
+#suggestions.hidden { display: none; }
+.sug {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 16px;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.sug:hover, .sug.selected { background: var(--bg3); }
+.sug .t { color: var(--fg); text-overflow: ellipsis; overflow: hidden; }
+.sug .u { color: var(--accent); font-size: 12px; text-overflow: ellipsis; overflow: hidden; }
+.sug .icon { color: var(--fg-dim); flex: none; }
+
+/* ---- full-screen panel (history / downloads) ---- */
+#panel {
+  position: fixed;
+  top: 96px; left: 0; right: 0; bottom: 0;
+  background: var(--bg);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+}
+#panel.hidden { display: none; }
+#panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--bg3);
+}
+#panel-title { font-size: 16px; font-weight: 600; flex: 1; }
+#panel-header button {
+  width: auto;
+  padding: 6px 14px;
+  border-radius: 15px;
+  background: var(--bg3);
+  font-size: 12px;
+}
+#panel-header button:hover { background: #4a4b4f; }
+#panel-body { flex: 1; overflow-y: auto; padding: 8px 0; }
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 24px;
+  cursor: pointer;
+}
+.row:hover { background: var(--bg2); }
+.row .time { color: var(--fg-dim); font-size: 11px; flex: none; width: 110px; }
+.row .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .u { color: var(--accent); font-size: 12px; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .del { color: var(--fg-dim); flex: none; padding: 2px 8px; border-radius: 10px; }
+.row .del:hover { background: #5f6368; color: var(--fg); }
+.panel-empty { color: var(--fg-dim); text-align: center; padding: 40px; }
