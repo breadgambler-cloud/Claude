@@ -1,0 +1,102 @@
+name: Build LOL Browser
+
+# Builds ready-to-run installers for Windows, macOS, and Linux and publishes
+# them to the repo's Releases page — so anyone can just download and run,
+# with no Node.js / npm / terminal needed.
+
+on:
+  push:
+    branches:
+      - main
+      - claude/browser-chrome-google-integration-q3odae
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows
+          - os: macos-latest
+            name: macos
+          - os: ubuntu-latest
+            name: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build installers
+        run: npm run dist
+        env:
+          # Do not try to code-sign; unsigned builds are fine for personal use.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Collect installers
+        shell: bash
+        run: |
+          mkdir -p dist-out
+          # Keep only the user-facing installer files, skip build metadata.
+          find release -maxdepth 1 -type f \
+            \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' \
+               -o -name '*.AppImage' -o -name '*.deb' \) \
+            -exec cp {} dist-out/ \; || true
+          ls -la dist-out
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lol-browser-${{ matrix.name }}
+          path: dist-out/*
+          if-no-files-found: warn
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all installers
+        uses: actions/download-artifact@v4
+        with:
+          path: all-installers
+          merge-multiple: true
+
+      - name: List files
+        run: ls -la all-installers
+
+      - name: Publish to Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: browser-latest
+          name: LOL Browser (latest build)
+          body: |
+            Ready-to-run builds of **LOL Browser** — a full Chromium-based web
+            browser with real Google account sign-in, tabs, bookmarks, and history.
+
+            **Just download the file for your system and run it. No install steps, no terminal.**
+
+            | Your system | Download |
+            |---|---|
+            | Windows | the `.exe` file (Setup installs it; `portable` runs without installing) |
+            | macOS | the `.dmg` file (open it, drag the app to Applications) |
+            | Linux | the `.AppImage` (make it executable and run) or the `.deb` |
+
+            > These builds are not code-signed, so Windows SmartScreen or macOS
+            > Gatekeeper may show a warning the first time — choose "Run anyway" /
+            > "Open". Your Google logins, bookmarks, and history are saved locally
+            > on your own computer.
+          files: all-installers/*
+          prerelease: true
+          fail_on_unmatched_files: false

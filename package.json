@@ -4,12 +4,54 @@
   "version": "1.0.0",
   "description": "A fully working tabbed web browser built on Chromium (Electron) with Google account support, bookmarks, and history.",
   "main": "main.js",
+  "author": "breadgambler",
   "scripts": {
     "start": "electron .",
-    "start:linux-sandboxless": "electron . --no-sandbox"
+    "start:linux-sandboxless": "electron . --no-sandbox",
+    "dist": "electron-builder --publish never"
   },
   "license": "MIT",
   "devDependencies": {
-    "electron": "^31.3.0"
+    "electron": "^31.3.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.lolbrowser.app",
+    "productName": "LOL Browser",
+    "files": [
+      "main.js",
+      "preload.js",
+      "ui/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.utilities"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Network",
+      "maintainer": "breadgambler"
+    }
   }
 }

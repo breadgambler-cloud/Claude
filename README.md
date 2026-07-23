@@ -17,9 +17,31 @@ so every website works exactly like it does in Chrome, including:
 - ✅ **Find in page** (`Ctrl+F`), **zoom** (`Ctrl` `+`/`-`/`0`), **right-click menus**
   (open link in new tab, copy, search selection, inspect), and **DevTools** (`F12`).
 
-## How to run it
+## How to get it — just download and run (no setup)
 
-You need [Node.js](https://nodejs.org) installed (version 18 or newer). Then:
+You don't need to install anything or touch a terminal. GitHub builds the app for you
+automatically and puts ready-to-run files on the **Releases** page:
+
+1. Go to the repo's **[Releases](../../releases)** page.
+2. Open the release named **"LOL Browser (latest build)"**.
+3. Download the file for your system and run it:
+   - **Windows** — the `.exe` (the `Setup` one installs it; the `portable` one runs with no install)
+   - **macOS** — the `.dmg` (open it, drag the app into Applications)
+   - **Linux** — the `.AppImage` (make it executable, then double-click) or the `.deb`
+
+That's it — the browser opens on Google, ready to use, with real Google sign-in.
+
+> The builds aren't code-signed, so the first launch may show a Windows SmartScreen or
+> macOS Gatekeeper warning — choose **"Run anyway" / "Open"**. Everything (logins,
+> bookmarks, history) is stored locally on your own computer.
+
+The build runs automatically whenever the code changes (see the **Actions** tab). If no
+release exists yet, open the **Actions** tab, wait for the latest "Build LOL Browser" run
+to finish, and the Releases page will populate.
+
+## Alternative: run from source
+
+If you'd rather run it yourself with [Node.js](https://nodejs.org) (18+):
 
 ```bash
 git clone https://github.com/breadgambler-cloud/claude.git
@@ -27,8 +49,6 @@ cd claude
 npm install
 npm start
 ```
-
-That's it — a browser window opens on Google, ready to use.
 
 > On some Linux setups Electron's sandbox needs an extra kernel setting; if the window
 > doesn't open, try `npm run start:linux-sandboxless` instead.
