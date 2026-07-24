@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#202124" />
+  <title>LOL Browser</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="LOL Browser" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Top bar: navigation + omnibox -->
+  <header id="bar">
+    <button id="menuBtn" class="icon" title="Menu">&#9776;</button>
+    <button id="backBtn" class="icon" title="Back" disabled>&#8592;</button>
+    <button id="fwdBtn" class="icon" title="Forward" disabled>&#8594;</button>
+    <button id="homeBtn" class="icon" title="Home">&#8962;</button>
+    <form id="omniForm" autocomplete="off">
+      <input id="omni" type="text" inputmode="url" enterkeyhint="go"
+             placeholder="Search Google or type a web address" spellcheck="false" />
+      <button id="starBtn" type="button" class="icon" title="Bookmark">&#9734;</button>
+    </form>
+    <button id="installBtn" class="pill hidden" title="Install app">Install</button>
+  </header>
+
+  <!-- Home / new-tab screen -->
+  <main id="home">
+    <div id="brand">
+      <div id="logo">LOL</div>
+      <div id="tagline">your browser, anywhere</div>
+    </div>
+
+    <form id="searchForm" autocomplete="off">
+      <input id="search" type="text" enterkeyhint="search"
+             placeholder="Search Google" spellcheck="false" />
+      <button type="submit" class="go">Search</button>
+    </form>
+
+    <section class="shelf">
+      <div class="shelf-head"><h2>Google apps</h2></div>
+      <div id="apps" class="tiles"></div>
+    </section>
+
+    <section class="shelf">
+      <div class="shelf-head">
+        <h2>Bookmarks</h2>
+        <button id="addBookmark" class="pill small">+ Add</button>
+      </div>
+      <div id="bookmarks" class="tiles"></div>
+    </section>
+
+    <section class="shelf">
+      <div class="shelf-head">
+        <h2>Recent history</h2>
+        <button id="clearHistory" class="pill small ghost">Clear</button>
+      </div>
+      <div id="history" class="list"></div>
+    </section>
+  </main>
+
+  <!-- In-page site viewer (for sites that allow embedding) -->
+  <section id="viewer" class="hidden">
+    <iframe id="frame" title="Web page" referrerpolicy="no-referrer"
+            sandbox="allow-forms allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-downloads"></iframe>
+    <div id="blocked" class="hidden">
+      <div class="blocked-card">
+        <h3>This site won't open inside the page</h3>
+        <p id="blockedName">Google and many big sites block being shown inside another page for security. That's normal — open it in its own tab instead.</p>
+        <button id="openTab" class="go">Open in a new tab</button>
+        <button id="backHome" class="pill">Back to home</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Slide-in menu -->
+  <div id="drawer" class="hidden">
+    <div class="drawer-panel">
+      <button class="drawer-item" data-action="home">&#8962;&nbsp; Home</button>
+      <button class="drawer-item" data-action="newtab">&#128279;&nbsp; Open a link in a new tab</button>
+      <button class="drawer-item" data-action="install">&#8681;&nbsp; Install this app</button>
+      <button class="drawer-item" data-action="clear">&#128465;&nbsp; Clear history</button>
+      <div class="drawer-note" id="iosNote"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
