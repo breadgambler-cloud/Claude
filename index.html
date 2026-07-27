@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>⛏️ Mutant Ore Tycoon</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b1020; --card:#18213f; --line:#2c3a66; --txt:#e8ecff; --dim:#93a0c8;
+  --gold:#ffd35c; --good:#5cff9d; --bad:#ff6b7f; --acc:#7c6bff; --acc2:#31d8ff;
+}
+html,body{height:100%}
+body{
+  font-family:"Segoe UI",Inter,system-ui,-apple-system,sans-serif;
+  background:radial-gradient(1200px 800px at 15% -10%,#1d2a55 0%,#0b1020 60%),#0b1020;
+  color:var(--txt); overflow:hidden;
+}
+button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:none}
+button:disabled{opacity:.4;cursor:not-allowed}
+
+#app{display:flex;flex-direction:column;height:100vh}
+header{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:8px 14px;background:linear-gradient(180deg,#1a2444,#131b36);
+  border-bottom:1px solid var(--line);box-shadow:0 4px 20px #0008;z-index:5
+}
+.logo{font-weight:800;font-size:16px;letter-spacing:.5px;white-space:nowrap}
+.logo small{display:block;font-size:9px;color:var(--dim);font-weight:500;letter-spacing:2px}
+.stat{background:#0e152e;border:1px solid var(--line);border-radius:10px;padding:5px 11px;line-height:1.15}
+.stat .k{font-size:9px;letter-spacing:1.2px;color:var(--dim);text-transform:uppercase}
+.stat .v{font-size:15px;font-weight:700}
+.gold{color:var(--gold)}.good{color:var(--good)}.bad{color:var(--bad)}.acc{color:var(--acc2)}
+.spacer{flex:1}
+.daywrap{min-width:190px}
+.dbar{height:6px;background:#0a1024;border-radius:99px;overflow:hidden;margin-top:4px;border:1px solid var(--line)}
+.dbar>i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),var(--acc2));width:0}
+
+main{flex:1;display:flex;gap:12px;padding:12px;overflow:hidden}
+.col{display:flex;flex-direction:column;gap:12px;min-height:0}
+#left{flex:1.6}
+#right{flex:1;max-width:430px;min-width:320px}
+.panel{
+  background:linear-gradient(180deg,#18213f,#141c37);border:1px solid var(--line);
+  border-radius:14px;display:flex;flex-direction:column;min-height:0;overflow:hidden
+}
+.phead{padding:9px 12px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;background:#1b2542}
+.phead .sub{font-weight:500;font-size:11px;color:var(--dim);margin-left:auto}
+.pbody{padding:10px;overflow-y:auto;flex:1}
+.pbody::-webkit-scrollbar{width:8px}
+.pbody::-webkit-scrollbar-thumb{background:var(--line);border-radius:9px}
+
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:9px}
+.tower{
+  position:relative;background:linear-gradient(180deg,#1f2a4f,#18213f);border:1px solid #33427a;
+  border-radius:12px;padding:8px;text-align:center;cursor:pointer;transition:.12s;user-select:none
+}
+.tower:hover{transform:translateY(-2px);border-color:#5a6ec4}
+.tower.sel{border-color:var(--acc2);box-shadow:0 0 0 2px #31d8ff55,0 0 18px #31d8ff33}
+.tower.mtarget{border-color:var(--good);box-shadow:0 0 0 2px #5cff9d55;animation:pulse 1s infinite}
+.tower.msrc{border-color:var(--gold);box-shadow:0 0 0 2px #ffd35c66}
+@keyframes pulse{50%{box-shadow:0 0 0 5px #5cff9d22}}
+.tower .emo{font-size:33px;line-height:1.15;filter:drop-shadow(0 3px 6px #0009)}
+.tower .nm{font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tower .tier{position:absolute;top:5px;left:6px;font-size:9px;font-weight:800;background:#0d142c;border:1px solid #33427a;border-radius:6px;padding:1px 4px;color:var(--dim)}
+.tower .lvl{position:absolute;top:5px;right:6px;font-size:9px;font-weight:800;background:#0d142c;border:1px solid #33427a;border-radius:6px;padding:1px 4px;color:var(--gold)}
+.tower .mut{font-size:10px;font-weight:700;margin-top:1px;height:13px;white-space:nowrap;overflow:hidden}
+.tower .tr{font-size:11px;height:15px;letter-spacing:1px}
+.tower .bar{height:5px;background:#0a1024;border-radius:99px;overflow:hidden;margin-top:3px;border:1px solid var(--line)}
+.tower .bar>i{display:block;height:100%;background:linear-gradient(90deg,#4bd,#7c6bff);width:0}
+.slot{
+  border:2px dashed #33427a;border-radius:12px;display:flex;align-items:center;justify-content:center;
+  flex-direction:column;color:var(--dim);font-size:11px;min-height:118px;cursor:pointer;transition:.12s
+}
+.slot:hover{border-color:var(--acc2);color:var(--acc2);background:#31d8ff0d}
+.slot b{font-size:24px;font-weight:400;display:block}
+
+#detail{padding:10px;border-top:1px solid var(--line);background:#141c37;font-size:12px}
+#detail .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#detail .big{font-size:30px}
+.btn{
+  background:linear-gradient(180deg,#2b3a72,#222f5c);border:1px solid #3f52a0;border-radius:9px;
+  padding:6px 10px;font-size:12px;font-weight:700;transition:.12s;white-space:nowrap
+}
+.btn:hover:not(:disabled){background:linear-gradient(180deg,#37499a,#2a3a75);border-color:#6b7fd8}
+.btn.p{background:linear-gradient(180deg,#3fa06b,#2c7d51);border-color:#5cff9d55}
+.btn.p:hover:not(:disabled){background:linear-gradient(180deg,#4dbd80,#35945f)}
+.btn.g{background:linear-gradient(180deg,#a07d2b,#7d6122);border-color:#ffd35c55}
+.btn.g:hover:not(:disabled){background:linear-gradient(180deg,#bd9435,#94742a)}
+.btn.d{background:linear-gradient(180deg,#8a3245,#6d2637);border-color:#ff6b7f55}
+.btn.sm{padding:3px 7px;font-size:11px}
+.tag{background:#0d142c;border:1px solid #33427a;border-radius:7px;padding:2px 6px;font-size:11px}
+
+.tabs{display:flex;gap:4px;padding:6px;background:#131b36;border-bottom:1px solid var(--line)}
+.tab{flex:1;padding:6px 4px;border-radius:9px;font-size:12px;font-weight:700;color:var(--dim);text-align:center}
+.tab.on{background:linear-gradient(180deg,#2b3a72,#222f5c);color:#fff;box-shadow:inset 0 0 0 1px #3f52a0}
+.item{
+  display:flex;gap:9px;align-items:center;background:#1a2342;border:1px solid var(--line);
+  border-radius:11px;padding:8px;margin-bottom:7px
+}
+.item .ic{font-size:24px;width:30px;text-align:center;flex:none}
+.item .info{flex:1;min-width:0}
+.item .t{font-size:12.5px;font-weight:700}
+.item .d,.d{font-size:11px;color:var(--dim);line-height:1.4}
+.log .e{border-left:3px solid #3f52a0;background:#161f3c;border-radius:0 8px 8px 0;padding:5px 8px;margin-bottom:5px;font-size:11.5px}
+.log .e b{color:var(--acc2)}
+
+.toff{display:flex;gap:8px;align-items:flex-start;background:#1a2342;border:1px solid var(--line);border-radius:11px;padding:8px;margin-bottom:7px;cursor:pointer;transition:.12s}
+.toff:hover{border-color:var(--gold);background:#20294d}
+.toff.dis{opacity:.45;cursor:not-allowed}
+
+#toasts{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;align-items:center;z-index:50;pointer-events:none}
+.toast{background:#1e2951ee;border:1px solid #5a6ec4;border-radius:11px;padding:8px 14px;font-size:12.5px;font-weight:600;box-shadow:0 8px 30px #000a;animation:tin .3s;max-width:70vw;text-align:center}
+@keyframes tin{from{opacity:0;transform:translateY(12px)}}
+#modal{position:fixed;inset:0;background:#040814d0;display:none;align-items:center;justify-content:center;z-index:60;padding:20px}
+#modal.on{display:flex}
+.mbox{background:linear-gradient(180deg,#1b2444,#141c37);border:1px solid #3f52a0;border-radius:16px;max-width:780px;width:100%;max-height:86vh;overflow-y:auto;padding:18px}
+.mbox h2{font-size:17px;margin-bottom:8px}
+.mbox h3{font-size:13px;margin:14px 0 6px;color:var(--acc2)}
+.mbox p,.mbox li{font-size:12px;color:#c3cdf0;line-height:1.55}
+.mbox ul{padding-left:16px}
+.gridref{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:6px}
+.gridref div{background:#161f3c;border:1px solid var(--line);border-radius:9px;padding:6px 8px;font-size:11.5px}
+#eventBanner{padding:8px 12px;background:linear-gradient(90deg,#3a2b7a,#1e2951);border-bottom:1px solid #5a6ec4;font-size:12.5px;display:none;align-items:center;gap:8px;flex-wrap:wrap}
+#eventBanner.on{display:flex}
+@media(max-width:900px){
+  body{overflow:auto}
+  main{flex-direction:column;overflow:visible}
+  #right{max-width:none;min-height:420px}
+  #left{min-height:440px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+  <div class="logo">⛏️ MUTANT ORE TYCOON<small>MERGE · MUTATE · FORGE</small></div>
+  <div class="stat"><div class="k">Coins</div><div class="v gold" id="hCoins">0</div></div>
+  <div class="stat"><div class="k">Income</div><div class="v good" id="hRate">0/s</div></div>
+  <div class="stat"><div class="k">Towers</div><div class="v" id="hTowers">0/6</div></div>
+  <div class="stat"><div class="k">Shards</div><div class="v acc" id="hShards">0</div></div>
+  <div class="stat daywrap">
+    <div class="k">Day <span id="hDay">1</span> — event in <span id="hDayT">--</span></div>
+    <div class="dbar"><i id="hDayBar"></i></div>
+  </div>
+  <div class="spacer"></div>
+  <button class="btn" id="btnHelp">❓ Help</button>
+  <button class="btn" id="btnSave">💾 Save</button>
+  <button class="btn d" id="btnWipe">🗑️</button>
+</header>
+<div id="eventBanner"></div>
+
+<main>
+  <div class="col" id="left">
+    <div class="panel" style="flex:1">
+      <div class="phead">🏭 Your Mine <span class="sub" id="mineSub"></span></div>
+      <div class="pbody"><div id="grid"></div></div>
+      <div id="detail"></div>
+    </div>
+  </div>
+
+  <div class="col" id="right">
+    <div class="panel" style="flex:1">
+      <div class="tabs">
+        <button class="tab on" data-tab="shop">🏪 Store</button>
+        <button class="tab" data-tab="forge">🔨 Forge</button>
+        <button class="tab" data-tab="bag">🎒 Ores</button>
+        <button class="tab" data-tab="log">📜 Log</button>
+      </div>
+      <div class="pbody" id="tabBody"></div>
+    </div>
+  </div>
+</main>
+</div>
+
+<div id="toasts"></div>
+<div id="modal"><div class="mbox" id="mbox"></div></div>
+
+<script>
+"use strict";
+/* ============================================================
+   DATA
+   ============================================================ */
+const MATS = [
+  {n:"Wood",      e:"🪵", v:1,     c:"#c08a5a"},
+  {n:"Stone",     e:"🪨", v:3,     c:"#9aa6bd"},
+  {n:"Copper",    e:"🥉", v:9,     c:"#d98a4a"},
+  {n:"Iron",      e:"⚙️", v:28,    c:"#b9c4d8"},
+  {n:"Silver",    e:"🥈", v:85,    c:"#dfe8f5"},
+  {n:"Gold",      e:"🥇", v:260,   c:"#ffd35c"},
+  {n:"Diamond",   e:"💎", v:820,   c:"#7ff0ff"},
+  {n:"Mythril",   e:"🔮", v:2600,  c:"#c58cff"},
+  {n:"Starstone", e:"☄️", v:8200,  c:"#ff9c5c"},
+  {n:"Voidstone", e:"🌌", v:26000, c:"#a06bff"}
+];
+const MAXTIER = MATS.length;
+
+/* mutations — ordered worst -> best (index = rank) */
+const MUTS = [
+  {id:"gleam",  n:"Gleaming",    e:"✨", val:2,   spd:1,    w:30,   c:"#ffe9a8"},
+  {id:"burn",   n:"Burning",     e:"🔥", val:1.5, spd:1.6,  w:22,   c:"#ff9a5c"},
+  {id:"charge", n:"Charged",     e:"⚡", val:1.2, spd:2.2,  w:16,   c:"#ffe45c"},
+  {id:"frozen", n:"Frozen",      e:"❄️", val:4,   spd:0.65, w:14,   c:"#8fe6ff"},
+  {id:"lucky",  n:"Lucky",       e:"🍀", val:3,   spd:1.1,  w:11,   c:"#7dff9c", luck:1.5},
+  {id:"radio",  n:"Radioactive", e:"☢️", val:6,   spd:1.15, w:7,    c:"#c8ff5c"},
+  {id:"cryst",  n:"Crystalline", e:"💠", val:9,   spd:1.2,  w:4.5,  c:"#9ad8ff"},
+  {id:"blood",  n:"Bloodied",    e:"🩸", val:13,  spd:0.85, w:2.5,  c:"#ff6b7f"},
+  {id:"rain",   n:"Rainbow",     e:"🌈", val:20,  spd:1.5,  w:1.2,  c:"#ff9ce8"},
+  {id:"void",   n:"Void",        e:"🌑", val:35,  spd:0.75, w:0.6,  c:"#a06bff"},
+  {id:"regal",  n:"Regal",       e:"👑", val:60,  spd:1.35, w:0.25, c:"#ffd35c"}
+];
+const MUTMAP = {}; MUTS.forEach((m,i)=>{ m.rank=i; MUTMAP[m.id]=m; });
+
+/* 10 forge traits */
+const TRAITS = [
+  {id:"swift",     n:"Swift",     e:"⚡",  d:"+40% harvest speed."},
+  {id:"greedy",    n:"Greedy",    e:"💰",  d:"Skims 40% of every harvest's value as instant coins."},
+  {id:"fertile",   n:"Fertile",   e:"🌱",  d:"+1 extra ore per harvest."},
+  {id:"arcane",    n:"Arcane",    e:"🔮",  d:"20% chance a harvest is tripled."},
+  {id:"fortunate", n:"Fortunate", e:"🍀",  d:"+60% mutation chance on this tower."},
+  {id:"symbiotic", n:"Symbiotic", e:"🔗",  d:"+6% speed for every OTHER Symbiotic tower."},
+  {id:"prodigy",   n:"Prodigy",   e:"🌟",  d:"Upgrades cost 30% less and give +50% more power per level."},
+  {id:"timeless",  n:"Timeless",  e:"⏳",  d:"Rolls twice on every event's mutation chance."},
+  {id:"refined",   n:"Refined",   e:"💎",  d:"15% chance a harvest becomes the NEXT tier of ore."},
+  {id:"eternal",   n:"Eternal",   e:"♾️",  d:"+8% harvest speed to every other tower."}
+];
+const TRAITMAP = {}; TRAITS.forEach(t=>TRAITMAP[t.id]=t);
+const MAXTRAITS = 3;
+
+const DAY_LEN = 90;      // seconds per in-game day
+const START_SLOTS = 6;
+const MAX_SLOTS = 24;
+
+/* ============================================================
+   STATE
+   ============================================================ */
+let S;
+function newState(shards){
+  return {
+    coins:60, lifetime:0, shards:shards||0,
+    day:1, dayT:0, towers:[], nextId:1,
+    slots:START_SLOTS, inv:{}, bought:0,
+    up:{tools:0, guild:0, charm:0, plot:0, auto:0},
+    autoSell:false,
+    buff:{spd:1, sell:1, mut:0, shop:1, name:"", e:""},
+    log:[], t:Date.now(), tab:"shop", sel:null, mergeFrom:null, offer:null
+  };
+}
+function save(){ S.t=Date.now(); try{ localStorage.setItem("mot_save",JSON.stringify(S)); }catch(e){} }
+function load(){
+  try{
+    const raw=localStorage.getItem("mot_save"); if(!raw) return false;
+    const d=JSON.parse(raw); if(!d||!Array.isArray(d.towers)) return false;
+    S=Object.assign(newState(),d);
+    S.buff=Object.assign({spd:1,sell:1,mut:0,shop:1,name:"",e:""},d.buff||{});
+    S.up=Object.assign({tools:0,guild:0,charm:0,plot:0,auto:0},d.up||{});
+    S.towers.forEach(t=>{ t.traits=t.traits||[]; t.p=t.p||0; t.cd=0; });
+    S.sel=null; S.mergeFrom=null; S.offer=null;
+    return true;
+  }catch(e){ return false; }
+}
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+const U=["","K","M","B","T","Qa","Qi","Sx","Sp","Oc","No","Dc"];
+function fmt(n){
+  if(!isFinite(n)) return "∞";
+  if(n<0) return "-"+fmt(-n);
+  if(n<1000) return (n<10 && n%1!==0) ? n.toFixed(1) : Math.floor(n).toString();
+  let i=0; while(n>=1000 && i<U.length-1){ n/=1000; i++; }
+  return (n<10?n.toFixed(2):n<100?n.toFixed(1):Math.floor(n))+U[i];
+}
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const ri=(a,b)=>Math.floor(rnd(a,b+1));
+function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
+function wpick(list,wf){
+  let tot=0; for(const x of list) tot+=wf(x);
+  let r=Math.random()*tot;
+  for(const x of list){ r-=wf(x); if(r<=0) return x; }
+  return list[list.length-1];
+}
+function toast(msg){
+  const d=document.createElement("div"); d.className="toast"; d.innerHTML=msg;
+  const box=document.getElementById("toasts");
+  box.appendChild(d);
+  while(box.children.length>5) box.removeChild(box.firstChild);
+  setTimeout(()=>{ d.style.transition="opacity .4s"; d.style.opacity="0"; },1900);
+  setTimeout(()=>d.remove(),2400);
+}
+function logE(e,title,txt){
+  S.log.unshift({e:e,t:title,d:txt});
+  if(S.log.length>60) S.log.pop();
+  if(S.tab==="log") dirty.tab=true;
+}
+function has(tw,id){ return tw.traits.indexOf(id)>=0; }
+function countTrait(id){ let c=0; for(const t of S.towers) if(has(t,id)) c++; return c; }
+function getTower(id){ return S.towers.find(t=>t.id===id)||null; }
+
+/* ============================================================
+   ECONOMY / STATS
+   ============================================================ */
+function globalSpeed(){ return (1+0.12*S.up.tools) * (1+0.05*S.shards) * S.buff.spd; }
+function sellMult(){ return (1+0.15*S.up.guild) * (1+0.03*S.shards) * S.buff.sell; }
+function unitPrice(tier,mutId){
+  const m = mutId?MUTMAP[mutId]:null;
+  return MATS[tier-1].v * (m?m.val:1) * sellMult();
+}
+function towerStats(tw){
+  const m = tw.mut?MUTMAP[tw.mut]:null;
+  const lvlPow = has(tw,"prodigy")?0.21:0.14;
+  let spd = 1 + lvlPow*(tw.lvl-1);
+  if(has(tw,"swift")) spd*=1.4;
+  if(m) spd*=m.spd;
+  if(has(tw,"symbiotic")) spd*=1+0.06*Math.max(0,countTrait("symbiotic")-1);
+  const eternals = countTrait("eternal") - (has(tw,"eternal")?1:0);
+  if(eternals>0) spd*=Math.pow(1.08,eternals);
+  spd*=globalSpeed();
+  const interval = 3.0 + (tw.tier-1)*0.45;
+  const amt = 1 + (has(tw,"fertile")?1:0);
+  const exAmt = amt * (has(tw,"arcane")?1.4:1);
+  let val = unitPrice(tw.tier,tw.mut);
+  if(has(tw,"refined")) val = val*0.85 + unitPrice(Math.min(MAXTIER,tw.tier+1),tw.mut)*0.15;
+  if(has(tw,"greedy")) val*=1.4;
+  return {spd:spd, interval:interval, amt:amt, exAmt:exAmt, cps: exAmt*val*spd/interval};
+}
+function totalIncome(){ let s=0; for(const t of S.towers) s+=towerStats(t).cps; return s; }
+function addInv(tier,mut,qty){
+  const k=tier+"|"+(mut||"");
+  S.inv[k]=(S.inv[k]||0)+qty;
+  dirty.bag=true;
+}
+function invCount(tier){ let c=0; for(const k in S.inv){ if(+k.split("|")[0]===tier) c+=S.inv[k]; } return c; }
+function takeInv(tier,qty){
+  const keys=Object.keys(S.inv).filter(k=>+k.split("|")[0]===tier && S.inv[k]>0);
+  keys.sort((a,b)=>unitPrice(tier,a.split("|")[1])-unitPrice(tier,b.split("|")[1]));
+  let need=qty;
+  for(const k of keys){
+    const take=Math.min(need,S.inv[k]);
+    S.inv[k]-=take; need-=take;
+    if(S.inv[k]<=0.0001) delete S.inv[k];
+    if(need<=0) break;
+  }
+  dirty.bag=true; return need<=0;
+}
+function earn(n){ S.coins+=n; S.lifetime+=n; }
+function sellKey(k){
+  const q=S.inv[k]; if(!q) return 0;
+  const parts=k.split("|");
+  const gain=unitPrice(+parts[0],parts[1])*q;
+  delete S.inv[k]; earn(gain); dirty.bag=true; return gain;
+}
+function sellAll(){ let g=0; for(const k in S.inv) g+=sellKey(k); return g; }
+
+/* ============================================================
+   PRODUCTION
+   ============================================================ */
+function harvest(tw,cycles){
+  if(cycles<=0) return;
+  const bulk = cycles>1.5;
+  const amt = 1 + (has(tw,"fertile")?1:0);
+  let total = amt*cycles;
+  if(has(tw,"arcane")){
+    if(bulk) total*=1.4;
+    else if(Math.random()<0.20) total*=3;
+  }
+  let hiT=0;
+  if(has(tw,"refined") && tw.tier<MAXTIER){
+    if(bulk){ hiT=total*0.15; total-=hiT; }
+    else if(Math.random()<0.15){ hiT=total; total=0; }
+  }
+  if(total>0) addInv(tw.tier,tw.mut,total);
+  if(hiT>0) addInv(tw.tier+1,tw.mut,hiT);
+  if(has(tw,"greedy")){
+    earn(0.4*( total*unitPrice(tw.tier,tw.mut) +
+               hiT*unitPrice(Math.min(MAXTIER,tw.tier+1),tw.mut) ));
+  }
+  tw.made=(tw.made||0)+total+hiT;
+}
+function tick(dt){
+  for(const tw of S.towers){
+    const st=towerStats(tw);
+    tw.p=(tw.p||0)+dt*st.spd;
+    if(tw.p>=st.interval){
+      const cycles=Math.floor(tw.p/st.interval);
+      tw.p-=cycles*st.interval;
+      if(cycles>60) harvest(tw,cycles);                     // bulk (offline catch-up)
+      else for(let i=0;i<cycles;i++) harvest(tw,1);
+    }
+    if(tw.cd>0) tw.cd=Math.max(0,tw.cd-dt);
+  }
+  if(S.autoSell && S.up.auto) sellAll();
+}
+
+/* ============================================================
+   MUTATIONS
+   ============================================================ */
+function luckOf(tw){
+  let l = 1 + 0.08*S.up.charm + S.buff.mut;
+  if(has(tw,"fortunate")) l*=1.6;
+  const m=tw.mut?MUTMAP[tw.mut]:null;
+  if(m && m.luck) l*=m.luck;
+  return l;
+}
+function rollMutation(tw,chance,filter,rareBias){
+  const rolls = has(tw,"timeless")?2:1;
+  let got=null;
+  for(let i=0;i<rolls;i++){
+    if(Math.random() > chance*luckOf(tw)) continue;
+    const pool = MUTS.filter(m=>!filter||filter(m));
+    if(!pool.length) continue;
+    const m = wpick(pool, x=> rareBias?Math.pow(x.w,0.45):x.w );
+    const cur = tw.mut?MUTMAP[tw.mut]:null;
+    if(!cur || m.rank>cur.rank){ tw.mut=m.id; got=m; }
+  }
+  return got;
+}
+function mutateSweep(chance,filter,rareBias){
+  const hits=[];
+  for(const tw of S.towers){
+    const m=rollMutation(tw,chance,filter,rareBias);
+    if(m) hits.push(m.e+MATS[tw.tier-1].e);
+  }
+  if(hits.length){
+    toast("🧬 "+hits.length+" tower"+(hits.length>1?"s":"")+" mutated! "+hits.slice(0,8).join(" "));
+    dirty.towers=true;
+  }
+  return hits;
+}
+
+/* ============================================================
+   EVENTS
+   ============================================================ */
+const EVENTS=[
+  {e:"☄️",n:"Meteor Shower",w:12,d:"Ore-bearing rocks rain down — every tower gets a 35% mutation roll.",
+   run(){ const h=mutateSweep(0.35); return h.length?h.length+" towers mutated.":"No mutations took hold."; }},
+
+  {e:"🌈",n:"Rainbow Rain",w:5,d:"Prismatic rain soaks the mine: 3 random towers get a GUARANTEED rare-biased mutation.",
+   run(){ const pool=S.towers.slice().sort(()=>Math.random()-0.5).slice(0,3); let c=0;
+     for(const tw of pool){ if(rollMutation(tw,999,null,true)) c++; }
+     dirty.towers=true; return c+" tower(s) blessed."; }},
+
+  {e:"⛈️",n:"Thunderstorm",w:10,d:"Lightning supercharges the drills: x2 speed today plus a 12% mutation roll.",
+   run(){ S.buff.spd=2; mutateSweep(0.12); return "Speed x2 for the day."; }},
+
+  {e:"🌕",n:"Blood Moon",w:7,d:"Ore sells for x3 today, and a 22% chance of a dark mutation.",
+   run(){ S.buff.sell=3;
+     mutateSweep(0.22,m=>["blood","void","radio","frozen","gleam","burn"].indexOf(m.id)>=0);
+     return "Sell value x3 for the day."; }},
+
+  {e:"💰",n:"Market Boom",w:12,d:"Traders are desperate — ore sells for x2.4 today.",
+   run(){ S.buff.sell=2.4; return "Sell value x2.4 for the day."; }},
+
+  {e:"🎁",n:"Traveling Merchant",w:10,d:"A caravan arrives: a free tower plus 30% off the store today.",
+   run(){ S.buff.shop=0.7;
+     if(S.towers.length<S.slots){
+       const avg=S.towers.length?Math.round(S.towers.reduce((a,t)=>a+t.tier,0)/S.towers.length):1;
+       const t=Math.max(1,Math.min(MAXTIER-1,avg));
+       addTower(t); dirty.towers=true;
+       return "Gifted a Tier "+t+" "+MATS[t-1].n+" tower, and 30% off the store.";
+     }
+     return "No free slot for the gift — but the store is 30% off."; }},
+
+  {e:"🌪️",n:"Void Rift",w:4,d:"Reality tears open: 14% chance of a RARE-ONLY mutation on each tower.",
+   run(){ const h=mutateSweep(0.14,m=>m.rank>=6,true);
+     return h.length?h.length+" tower(s) touched by the void.":"The rift closed quietly."; }},
+
+  {e:"🧪",n:"Alchemist's Visit",w:8,d:"A wandering alchemist grafts a free trait onto one tower.",
+   run(){ const cands=S.towers.filter(t=>t.traits.length<MAXTRAITS);
+     if(!cands.length) return "Every tower was already full of traits.";
+     const tw=pick(cands);
+     const av=TRAITS.filter(t=>!has(tw,t.id));
+     if(!av.length) return "No trait was available.";
+     const t=pick(av); tw.traits.push(t.id); dirty.towers=true;
+     return "A Tier "+tw.tier+" "+MATS[tw.tier-1].n+" tower gained "+t.e+" "+t.n+"."; }},
+
+  {e:"🔥",n:"Solar Flare",w:10,d:"Blistering heat: x2.5 speed, but ore quality suffers (x0.8 sell).",
+   run(){ S.buff.spd=2.5; S.buff.sell=0.8; return "Speed x2.5, sell x0.8."; }},
+
+  {e:"😴",n:"Quiet Day",w:11,d:"Nothing happened. The foreman leaves a tip in the tin.",
+   run(){ const g=Math.max(150,totalIncome()*45); earn(g); return "Received 🪙"+fmt(g)+"."; }},
+
+  {e:"⛏️",n:"Ore Rush",w:10,d:"A vein bursts open — every tower instantly harvests 10 times.",
+   run(){ for(const tw of S.towers) for(let i=0;i<10;i++) harvest(tw,1);
+     dirty.bag=true; return "10 free harvests each."; }},
+
+  {e:"🍀",n:"Four-Leaf Fortune",w:6,d:"Luck saturates the air: +45% mutation chance all day, plus a 25% roll right now.",
+   run(){ S.buff.mut=0.45; mutateSweep(0.25); return "Mutation luck boosted all day."; }}
+];
+
+function newDay(){
+  S.day++;
+  S.buff={spd:1,sell:1,mut:0,shop:1,name:"",e:""};
+  const ev=wpick(EVENTS,e=>e.w);
+  const res=ev.run();
+  S.buff.name=ev.n; S.buff.e=ev.e;
+  logE(ev.e,"Day "+S.day+" — "+ev.n, ev.d+" "+(res||""));
+  toast(ev.e+" <b>"+ev.n+"</b> — "+(res||ev.d));
+  showBanner();
+  dirty.tab=true; dirty.towers=true; dirty.detail=true;
+}
+function showBanner(){
+  const b=document.getElementById("eventBanner");
+  if(!S.buff.name){ b.classList.remove("on"); return; }
+  const parts=[];
+  if(S.buff.spd!==1) parts.push("⚡ speed x"+S.buff.spd);
+  if(S.buff.sell!==1) parts.push("💰 sell x"+S.buff.sell);
+  if(S.buff.mut) parts.push("🧬 +"+Math.round(S.buff.mut*100)+"% mutation luck");
+  if(S.buff.shop!==1) parts.push("🏪 "+Math.round((1-S.buff.shop)*100)+"% off store");
+  b.classList.add("on");
+  b.innerHTML="<b>"+S.buff.e+" "+S.buff.name+"</b> <span style='color:var(--dim)'>active today</span> "+
+    (parts.length?"<span class='tag'>"+parts.join("</span> <span class='tag'>")+"</span>":"");
+}
+
+/* ============================================================
+   TOWER ACTIONS
+   ============================================================ */
+function addTower(tier,mut,traits){
+  const tw={id:S.nextId++,tier:tier,lvl:1,mut:mut||null,
+            traits:traits?traits.slice(0,MAXTRAITS):[],p:0,cd:0,made:0};
+  S.towers.push(tw); dirty.towers=true; return tw;
+}
+function towerCost(){ return Math.floor(25*Math.pow(1.19,S.bought)*S.buff.shop); }
+function upgradeCost(tw){
+  let c = 25*Math.pow(3.15,tw.tier-1)*Math.pow(1.6,tw.lvl-1);
+  if(has(tw,"prodigy")) c*=0.7;
+  return Math.floor(c);
+}
+function upgrade(tw){
+  const c=upgradeCost(tw);
+  if(S.coins<c){ toast("❌ Need 🪙"+fmt(c)); return; }
+  S.coins-=c; tw.lvl++;
+  dirty.towers=true; dirty.detail=true;
+  toast("⬆️ "+MATS[tw.tier-1].e+" tower is now Lv."+tw.lvl);
+}
+function canMerge(a,b){ return !!a && !!b && a.id!==b.id && a.tier===b.tier && a.tier<MAXTIER; }
+function doMerge(a,b){
+  if(!canMerge(a,b)) return;
+  const tier=a.tier+1;
+  const lvl=Math.max(1,Math.floor((a.lvl+b.lvl)/3));
+  const ma=a.mut?MUTMAP[a.mut]:null, mb=b.mut?MUTMAP[b.mut]:null;
+  const best=(ma&&mb)?(ma.rank>mb.rank?ma:mb):(ma||mb);
+  let mut=null, evolved=false;
+  if(best){
+    mut=best.id;
+    if(Math.random()<0.25 && best.rank<MUTS.length-1){ mut=MUTS[best.rank+1].id; evolved=true; }
+  }
+  const pool=[];
+  a.traits.concat(b.traits).forEach(t=>{ if(pool.indexOf(t)<0) pool.push(t); });
+  pool.sort(()=>Math.random()-0.5);
+  S.towers=S.towers.filter(t=>t.id!==a.id && t.id!==b.id);
+  const tw=addTower(tier,mut,pool.slice(0,MAXTRAITS));
+  tw.lvl=lvl;
+  S.sel=tw.id; S.mergeFrom=null; S.offer=null;
+  dirty.towers=true; dirty.detail=true;
+  toast("🔀 Merged into <b>"+MATS[tier-1].e+" Tier "+tier+" "+MATS[tier-1].n+"</b>"+
+        (mut?" "+MUTMAP[mut].e+" "+MUTMAP[mut].n+(evolved?" (evolved!)":""):"")+" Lv."+lvl);
+  logE("🔀","Merge","Two Tier "+a.tier+" towers became a Tier "+tier+" "+MATS[tier-1].n+" tower"+
+       (evolved?" — and the mutation evolved to "+MUTMAP[mut].n+"!":"."));
+}
+function scrapTower(tw){
+  const refund=Math.floor(25*Math.pow(3.15,tw.tier-1)*0.6*(1+0.2*(tw.lvl-1)));
+  S.towers=S.towers.filter(t=>t.id!==tw.id);
+  earn(refund);
+  if(S.sel===tw.id) S.sel=null;
+  if(S.mergeFrom===tw.id) S.mergeFrom=null;
+  dirty.towers=true; dirty.detail=true;
+  toast("♻️ Scrapped for 🪙"+fmt(refund));
+}
+
+/* ---------- forge ---------- */
+function forgeCost(tw){
+  return {
+    coins: Math.floor(400*Math.pow(5,tw.traits.length)*Math.pow(1.85,tw.tier-1)),
+    mat: 20*(tw.traits.length+1)*tw.tier,
+    tier: tw.tier
+  };
+}
+function stripCost(tw){ return Math.floor(1500*Math.pow(1.85,tw.tier-1)); }
+function makeOffer(tw){
+  const av=TRAITS.filter(t=>!has(tw,t.id));
+  S.offer={ id:tw.id, list:av.sort(()=>Math.random()-0.5).slice(0,3).map(t=>t.id) };
+}
+function applyTrait(tw,tid){
+  if(tw.traits.length>=MAXTRAITS){ toast("❌ Max "+MAXTRAITS+" traits."); return; }
+  const c=forgeCost(tw);
+  if(S.coins<c.coins){ toast("❌ Need 🪙"+fmt(c.coins)); return; }
+  if(invCount(c.tier)<c.mat){ toast("❌ Need "+c.mat+" "+MATS[c.tier-1].e+" "+MATS[c.tier-1].n); return; }
+  S.coins-=c.coins; takeInv(c.tier,c.mat);
+  tw.traits.push(tid); S.offer=null;
+  dirty.towers=true; dirty.detail=true; dirty.tab=true;
+  const t=TRAITMAP[tid];
+  toast("🔨 Forged <b>"+t.e+" "+t.n+"</b> onto a Tier "+tw.tier+" tower!");
+  logE("🔨","Forge","Tier "+tw.tier+" "+MATS[tw.tier-1].n+" tower gained "+t.e+" "+t.n+".");
+}
+function stripTraits(tw){
+  if(!tw.traits.length){ toast("❌ No traits to strip."); return; }
+  const c=stripCost(tw);
+  if(S.coins<c){ toast("❌ Need 🪙"+fmt(c)); return; }
+  S.coins-=c; tw.traits=[]; S.offer=null;
+  dirty.towers=true; dirty.detail=true; dirty.tab=true;
+  toast("🧯 Traits stripped.");
+}
+
+/* ---------- store ---------- */
+const CRATES=[
+  {e:"📦",n:"Supply Crate",     lo:1,hi:3,base:900},
+  {e:"🎁",n:"Rare Crate",       lo:3,hi:5,base:14000},
+  {e:"💫",n:"Cosmic Crate",     lo:5,hi:7,base:400000},
+  {e:"🌠",n:"Singularity Crate",lo:7,hi:9,base:12000000}
+];
+function crateCost(c){ return Math.floor(c.base*S.buff.shop); }
+function openCrate(c){
+  if(S.towers.length>=S.slots){ toast("❌ No free slot — expand your plot!"); return false; }
+  const t=ri(c.lo,c.hi);
+  const tw=addTower(t);
+  if(Math.random()<0.25) rollMutation(tw,1);
+  toast(c.e+" Opened: <b>Tier "+t+" "+MATS[t-1].n+"</b> "+MATS[t-1].e+(tw.mut?" "+MUTMAP[tw.mut].e+" "+MUTMAP[tw.mut].n:""));
+  return true;
+}
+const UPGRADES=[
+  {e:"🏗️",n:"Expand Plot",   d:()=>"+1 tower slot (now "+S.slots+"/"+MAX_SLOTS+").",
+   cost:()=>Math.floor(300*Math.pow(2.05,S.up.plot)), max:()=>S.slots>=MAX_SLOTS,
+   buy(){ S.slots++; S.up.plot++; dirty.towers=true; }},
+  {e:"🛠️",n:"Better Tools",  d:()=>"+12% harvest speed for ALL towers (now +"+(S.up.tools*12)+"%).",
+   cost:()=>Math.floor(500*Math.pow(1.8,S.up.tools)), buy(){ S.up.tools++; }},
+  {e:"🤝",n:"Merchant Guild",d:()=>"+15% ore sell value (now +"+(S.up.guild*15)+"%).",
+   cost:()=>Math.floor(900*Math.pow(1.95,S.up.guild)), buy(){ S.up.guild++; }},
+  {e:"🔯",n:"Lucky Charm",   d:()=>"+8% mutation chance everywhere (now +"+(S.up.charm*8)+"%).",
+   cost:()=>Math.floor(2500*Math.pow(2.2,S.up.charm)), buy(){ S.up.charm++; }},
+  {e:"🤖",n:"Auto-Seller",   d:()=>"Unlocks automatic ore selling.",
+   cost:()=>40000, max:()=>S.up.auto>=1, buy(){ S.up.auto=1; S.autoSell=true; }}
+];
+function shardsFor(){ return Math.floor(3*Math.sqrt(S.lifetime/5e6)); }
+function prestige(){
+  const g=shardsFor();
+  if(g<1){ toast("❌ Not enough lifetime coins for a shard yet."); return; }
+  if(!confirm("Retire?\n\nYou lose your towers, ore, coins and upgrades.\nYou gain "+g+
+              " Legacy Shards (+5% speed & +3% sell value each, permanently).")) return;
+  const total=S.shards+g;
+  const keepLog=S.log.slice(0,8);
+  S=newState(total); S.log=keepLog;
+  addTower(1);
+  logE("🔷","Retired","Rebuilt the mine with "+total+" Legacy Shards.");
+  dirty.all(); showBanner();
+  toast("🔷 Retired with "+g+" shards! Total: "+total);
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+const dirty={towers:true,tab:true,detail:true,bag:true,
+  all(){ this.towers=this.tab=this.detail=this.bag=true; }};
+const $=id=>document.getElementById(id);
+let barEls={};
+
+function traitStr(tw){ return tw.traits.map(id=>TRAITMAP[id].e).join(""); }
+
+function renderTowers(){
+  const g=$("grid"); g.innerHTML=""; barEls={};
+  for(const tw of S.towers){
+    const m=tw.mut?MUTMAP[tw.mut]:null, mat=MATS[tw.tier-1];
+    const d=document.createElement("div");
+    let cls="tower";
+    if(S.sel===tw.id) cls+=" sel";
+    if(S.mergeFrom===tw.id) cls+=" msrc";
+    else if(S.mergeFrom && canMerge(getTower(S.mergeFrom),tw)) cls+=" mtarget";
+    d.className=cls;
+    d.draggable=true;
+    d.innerHTML=
+      '<div class="tier">T'+tw.tier+'</div><div class="lvl">Lv'+tw.lvl+'</div>'+
+      '<div class="emo">'+mat.e+'</div>'+
+      '<div class="nm" style="color:'+mat.c+'">'+mat.n+'</div>'+
+      '<div class="mut" style="color:'+(m?m.c:"#5b6893")+'">'+(m?m.e+" "+m.n:"—")+'</div>'+
+      '<div class="tr">'+(traitStr(tw)||"&nbsp;")+'</div>'+
+      '<div class="bar"><i></i></div>';
+    d.onclick=()=>{
+      if(S.mergeFrom && S.mergeFrom!==tw.id){
+        const a=getTower(S.mergeFrom);
+        if(canMerge(a,tw)){ doMerge(a,tw); renderAll(); return; }
+        toast("❌ Merging needs two towers of the SAME tier.");
+        S.mergeFrom=null; dirty.towers=true; dirty.detail=true; renderAll(); return;
+      }
+      S.sel=(S.sel===tw.id?null:tw.id);
+      S.mergeFrom=null; S.offer=null;
+      dirty.towers=true; dirty.detail=true;
+      if(S.tab==="forge") dirty.tab=true;
+      renderAll();
+    };
+    d.ondragstart=e=>{ e.dataTransfer.setData("text/plain",String(tw.id)); e.dataTransfer.effectAllowed="move"; };
+    d.ondragover=e=>{ e.preventDefault(); };
+    d.ondrop=e=>{
+      e.preventDefault();
+      const a=getTower(+e.dataTransfer.getData("text/plain"));
+      if(canMerge(a,tw)){ doMerge(a,tw); renderAll(); }
+      else if(a && a.id!==tw.id) toast("❌ Both towers must be the same tier (and below max tier).");
+    };
+    barEls[tw.id]=d.querySelector(".bar>i");
+    g.appendChild(d);
+  }
+  for(let i=S.towers.length;i<S.slots;i++){
+    const d=document.createElement("div");
+    d.className="slot";
+    d.innerHTML="<b>➕</b>empty slot";
+    d.onclick=()=>{ S.tab="shop"; dirty.tab=true; renderAll(); toast("🏪 Buy a tower in the Store."); };
+    g.appendChild(d);
+  }
+  $("mineSub").textContent=S.towers.length+"/"+S.slots+" slots · "+fmt(totalIncome())+" 🪙/s";
+}
+
+function renderDetail(){
+  const el=$("detail"), tw=getTower(S.sel);
+  if(!tw){
+    el.innerHTML='<div class="d">👆 Click a tower to upgrade, merge, forge or scrap it. '+
+      'You can also <b>drag one tower onto another of the same tier</b> to merge them instantly.</div>';
+    return;
+  }
+  const mat=MATS[tw.tier-1], m=tw.mut?MUTMAP[tw.mut]:null, st=towerStats(tw);
+  const uc=upgradeCost(tw), fc=forgeCost(tw);
+  const mates=S.towers.filter(t=>canMerge(tw,t)).length;
+  el.innerHTML=
+   '<div class="row" style="margin-bottom:7px">'+
+     '<div class="big">'+mat.e+'</div>'+
+     '<div style="line-height:1.3">'+
+       '<div style="font-weight:800;font-size:13px;color:'+mat.c+'">Tier '+tw.tier+' '+mat.n+
+         ' Tower <span class="gold">Lv.'+tw.lvl+'</span></div>'+
+       '<div style="font-size:11px;color:var(--dim)">'+
+         (m?'<span style="color:'+m.c+'">'+m.e+' '+m.n+' (x'+m.val+' value, x'+m.spd+' speed)</span>':'No mutation')+
+         ' · '+(tw.traits.length?tw.traits.map(t=>TRAITMAP[t].e+" "+TRAITMAP[t].n).join(", "):"no traits")+
+       '</div>'+
+     '</div>'+
+     '<div class="spacer"></div>'+
+     '<div style="text-align:right;line-height:1.3">'+
+       '<div class="good" style="font-weight:800">'+fmt(st.cps)+' 🪙/s</div>'+
+       '<div style="font-size:10.5px;color:var(--dim)">'+st.exAmt.toFixed(1)+' ore every '+
+         (st.interval/st.spd).toFixed(2)+'s</div>'+
+     '</div>'+
+   '</div>'+
+   '<div class="row">'+
+     '<button class="btn p" id="dUp"'+(S.coins<uc?" disabled":"")+'>⬆️ Upgrade · 🪙'+fmt(uc)+'</button>'+
+     '<button class="btn g" id="dMerge"'+((tw.tier>=MAXTIER||mates===0)?" disabled":"")+'>🔀 '+
+       (S.mergeFrom===tw.id?"Cancel merge":"Merge")+' ('+mates+')</button>'+
+     '<button class="btn" id="dForge"'+(tw.traits.length>=MAXTRAITS?" disabled":"")+'>🔨 Forge · 🪙'+
+       fmt(fc.coins)+' + '+fc.mat+MATS[fc.tier-1].e+'</button>'+
+     '<button class="btn" id="dTap"'+(tw.cd>0?" disabled":"")+'>⛏️ Harvest now</button>'+
+     '<button class="btn d sm" id="dScrap">♻️ Scrap</button>'+
+   '</div>';
+  $("dUp").onclick=()=>{ upgrade(tw); renderAll(); };
+  $("dMerge").onclick=()=>{
+    S.mergeFrom=(S.mergeFrom===tw.id?null:tw.id);
+    if(S.mergeFrom) toast("🔀 Now click another Tier "+tw.tier+" tower to merge.");
+    dirty.towers=true; dirty.detail=true; renderAll();
+  };
+  $("dForge").onclick=()=>{ S.tab="forge"; S.offer=null; dirty.tab=true; renderAll(); };
+  $("dTap").onclick=()=>{ harvest(tw,1); tw.cd=2; dirty.detail=true; renderAll(); toast("⛏️ +"+MATS[tw.tier-1].e); };
+  $("dScrap").onclick=()=>{ if(confirm("Scrap this Tier "+tw.tier+" tower?")){ scrapTower(tw); renderAll(); } };
+}
+
+function renderTab(){
+  const b=$("tabBody"); let h="";
+  document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("on",t.dataset.tab===S.tab));
+
+  if(S.tab==="shop"){
+    const tc=towerCost();
+    h+='<div class="item"><div class="ic">🌰</div><div class="info"><div class="t">Sapling Tower</div>'+
+       '<div class="d">A fresh Tier 1 🪵 Wood tower. The price rises with every purchase.</div></div>'+
+       '<button class="btn p" data-buy="1"'+(S.coins<tc?" disabled":"")+'>🪙'+fmt(tc)+'</button></div>';
+    CRATES.forEach((c,i)=>{
+      const cost=crateCost(c);
+      h+='<div class="item"><div class="ic">'+c.e+'</div><div class="info"><div class="t">'+c.n+'</div>'+
+         '<div class="d">One random Tier '+c.lo+'–'+c.hi+' tower. 25% chance it arrives pre-mutated.</div></div>'+
+         '<button class="btn g" data-crate="'+i+'"'+(S.coins<cost?" disabled":"")+'>🪙'+fmt(cost)+'</button></div>';
+    });
+    h+='<div class="phead" style="border-radius:9px;border:1px solid var(--line);margin:10px 0 7px">🏆 Permanent Upgrades</div>';
+    UPGRADES.forEach((u,i)=>{
+      const maxed=u.max?u.max():false, c=u.cost();
+      h+='<div class="item"><div class="ic">'+u.e+'</div><div class="info"><div class="t">'+u.n+'</div>'+
+         '<div class="d">'+u.d()+'</div></div>'+
+         '<button class="btn" data-up="'+i+'"'+((maxed||S.coins<c)?" disabled":"")+'>'+
+         (maxed?"MAX":"🪙"+fmt(c))+'</button></div>';
+    });
+    if(S.up.auto)
+      h+='<div class="item"><div class="ic">🤖</div><div class="info"><div class="t">Auto-Sell</div>'+
+         '<div class="d">Instantly sells every ore the moment it is mined.</div></div>'+
+         '<button class="btn '+(S.autoSell?"p":"")+'" data-auto="1">'+(S.autoSell?"ON":"OFF")+'</button></div>';
+    const g=shardsFor();
+    h+='<div class="item" style="border-color:#7c6bff;margin-top:10px"><div class="ic">🔷</div>'+
+       '<div class="info"><div class="t">Retire (Prestige)</div>'+
+       '<div class="d">Reset everything for <b>'+g+'</b> Legacy Shards. Each shard gives +5% harvest speed '+
+       'and +3% sell value, forever. Lifetime earnings: 🪙'+fmt(S.lifetime)+'</div></div>'+
+       '<button class="btn g" data-prestige="1"'+(g<1?" disabled":"")+'>Retire</button></div>';
+  }
+
+  else if(S.tab==="forge"){
+    const tw=getTower(S.sel);
+    if(!tw){
+      h+='<div class="d" style="padding:8px">🔨 Select a tower in your mine, then forge <b>traits</b> onto it.<br><br>'+
+         'Each tower holds up to '+MAXTRAITS+' traits. Traits stack with mutations and are '+
+         '<b>inherited when you merge</b> — a merged tower keeps up to '+MAXTRAITS+' traits from its two parents.</div>';
+    } else {
+      const fc=forgeCost(tw), mat=MATS[fc.tier-1], have=invCount(fc.tier);
+      if(!S.offer || S.offer.id!==tw.id) makeOffer(tw);
+      h+='<div class="item"><div class="ic">'+MATS[tw.tier-1].e+'</div><div class="info">'+
+         '<div class="t">Tier '+tw.tier+' '+MATS[tw.tier-1].n+' · Lv.'+tw.lvl+'</div>'+
+         '<div class="d">Traits: '+(tw.traits.length?tw.traits.map(t=>TRAITMAP[t].e+" "+TRAITMAP[t].n).join(" · "):"none")+
+         ' ('+tw.traits.length+'/'+MAXTRAITS+')</div></div></div>';
+      if(tw.traits.length>=MAXTRAITS){
+        h+='<div class="d" style="padding:6px 2px">This tower is at max traits — strip them to start over.</div>';
+      } else {
+        const afford=S.coins>=fc.coins && have>=fc.mat;
+        h+='<div class="d" style="padding:4px 2px 8px">Cost per trait: <b class="gold">🪙'+fmt(fc.coins)+'</b> + <b class="'+
+           (have>=fc.mat?"good":"bad")+'">'+fc.mat+' '+mat.e+' '+mat.n+'</b> (you have '+fmt(have)+')</div>';
+        for(const tid of S.offer.list){
+          const t=TRAITMAP[tid];
+          h+='<div class="toff'+(afford?"":" dis")+'" data-trait="'+tid+'">'+
+             '<div class="ic" style="font-size:22px">'+t.e+'</div><div class="info">'+
+             '<div class="t">'+t.n+'</div><div class="d">'+t.d+'</div></div></div>';
+        }
+        h+='<button class="btn sm" data-reroll="1">🎲 Reroll offers (free)</button> ';
+      }
+      h+='<button class="btn d sm" data-strip="1">🧯 Strip traits · 🪙'+fmt(stripCost(tw))+'</button>';
+    }
+    h+='<div class="d" style="border-top:1px solid var(--line);margin-top:12px;padding-top:8px"><b>All 10 traits</b></div>'+
+       '<div class="gridref" style="margin-top:6px">'+
+       TRAITS.map(t=>'<div><b>'+t.e+' '+t.n+'</b><br><span style="color:var(--dim)">'+t.d+'</span></div>').join("")+
+       '</div>';
+  }
+
+  else if(S.tab==="bag"){
+    const keys=Object.keys(S.inv).filter(k=>S.inv[k]>0.0001).sort((a,b)=>{
+      const pa=a.split("|"), pb=b.split("|");
+      return unitPrice(+pb[0],pb[1])*S.inv[b] - unitPrice(+pa[0],pa[1])*S.inv[a];
+    });
+    let tot=0;
+    keys.forEach(k=>{ const p=k.split("|"); tot+=unitPrice(+p[0],p[1])*S.inv[k]; });
+    h+='<div style="display:flex;gap:6px;margin-bottom:8px;align-items:center;flex-wrap:wrap">'+
+       '<button class="btn p" data-sellall="1"'+(keys.length?"":" disabled")+'>💰 Sell everything · 🪙'+fmt(tot)+'</button>'+
+       (S.up.auto?'<button class="btn '+(S.autoSell?"p":"")+'" data-auto="1">🤖 Auto '+(S.autoSell?"ON":"OFF")+'</button>':"")+
+       '</div>';
+    if(!keys.length) h+='<div class="d" style="padding:6px">Your ore vault is empty — the towers are mining as you read this.</div>';
+    for(const k of keys){
+      const p=k.split("|"), mat=MATS[+p[0]-1], m=p[1]?MUTMAP[p[1]]:null;
+      const q=S.inv[k], price=unitPrice(+p[0],p[1]);
+      h+='<div class="item"><div class="ic">'+mat.e+'</div><div class="info">'+
+         '<div class="t" style="color:'+(m?m.c:mat.c)+'">'+(m?m.e+" "+m.n+" ":"")+mat.n+
+         ' <span style="color:var(--dim);font-weight:500">x'+fmt(q)+'</span></div>'+
+         '<div class="d">🪙'+fmt(price)+' each → <span class="gold">'+fmt(price*q)+'</span></div></div>'+
+         '<button class="btn sm p" data-sell="'+k+'">Sell</button></div>';
+    }
+    h+='<div class="d" style="border-top:1px solid var(--line);margin-top:10px;padding-top:8px">'+
+       '<b>Mutation table</b> (rarest last)</div><div class="gridref" style="margin-top:6px">'+
+       MUTS.map(m=>'<div><b style="color:'+m.c+'">'+m.e+' '+m.n+'</b><br><span style="color:var(--dim)">x'+
+       m.val+' value · x'+m.spd+' speed</span></div>').join("")+'</div>';
+  }
+
+  else if(S.tab==="log"){
+    h+='<div class="log">';
+    if(!S.log.length) h+='<div class="d">Nothing yet — an event fires at the end of every day.</div>';
+    for(const l of S.log) h+='<div class="e"><b>'+l.e+' '+l.t+'</b><div class="d">'+l.d+'</div></div>';
+    h+='</div>';
+  }
+  b.innerHTML=h;
+
+  b.querySelectorAll("[data-buy]").forEach(x=>x.onclick=()=>{
+    const c=towerCost();
+    if(S.towers.length>=S.slots){ toast("❌ No free slot — expand your plot!"); return; }
+    if(S.coins<c){ toast("❌ Not enough coins."); return; }
+    S.coins-=c; S.bought++; addTower(1); renderAll();
+  });
+  b.querySelectorAll("[data-crate]").forEach(x=>x.onclick=()=>{
+    const c=CRATES[+x.dataset.crate], cost=crateCost(c);
+    if(S.coins<cost){ toast("❌ Not enough coins."); return; }
+    S.coins-=cost;
+    if(!openCrate(c)) S.coins+=cost;
+    renderAll();
+  });
+  b.querySelectorAll("[data-up]").forEach(x=>x.onclick=()=>{
+    const u=UPGRADES[+x.dataset.up], c=u.cost();
+    if(u.max && u.max()) return;
+    if(S.coins<c){ toast("❌ Not enough coins."); return; }
+    S.coins-=c; u.buy(); toast(u.e+" "+u.n+" purchased!"); renderAll();
+  });
+  b.querySelectorAll("[data-auto]").forEach(x=>x.onclick=()=>{ S.autoSell=!S.autoSell; dirty.tab=true; renderAll(); });
+  b.querySelectorAll("[data-prestige]").forEach(x=>x.onclick=()=>{ prestige(); renderAll(); });
+  b.querySelectorAll("[data-trait]").forEach(x=>x.onclick=()=>{ const tw=getTower(S.sel); if(tw) applyTrait(tw,x.dataset.trait); renderAll(); });
+  b.querySelectorAll("[data-reroll]").forEach(x=>x.onclick=()=>{ const tw=getTower(S.sel); if(tw) makeOffer(tw); dirty.tab=true; renderAll(); });
+  b.querySelectorAll("[data-strip]").forEach(x=>x.onclick=()=>{ const tw=getTower(S.sel); if(tw) stripTraits(tw); renderAll(); });
+  b.querySelectorAll("[data-sell]").forEach(x=>x.onclick=()=>{ const g=sellKey(x.dataset.sell); toast("💰 +🪙"+fmt(g)); dirty.tab=true; renderAll(); });
+  b.querySelectorAll("[data-sellall]").forEach(x=>x.onclick=()=>{ const g=sellAll(); toast("💰 Sold everything for 🪙"+fmt(g)); dirty.tab=true; renderAll(); });
+}
+
+function renderAll(){
+  if(dirty.towers){ renderTowers(); dirty.towers=false; }
+  if(dirty.detail){ renderDetail(); dirty.detail=false; }
+  if(dirty.tab || dirty.bag){ renderTab(); dirty.tab=false; dirty.bag=false; }
+}
+function renderHUD(){
+  $("hCoins").textContent=fmt(S.coins);
+  $("hRate").textContent=fmt(totalIncome())+"/s";
+  $("hTowers").textContent=S.towers.length+"/"+S.slots;
+  $("hShards").textContent=S.shards;
+  $("hDay").textContent=S.day;
+  const left=Math.max(0,DAY_LEN-S.dayT);
+  $("hDayT").textContent=Math.floor(left/60)+":"+String(Math.floor(left%60)).padStart(2,"0");
+  $("hDayBar").style.width=(S.dayT/DAY_LEN*100)+"%";
+  for(const tw of S.towers){
+    const el=barEls[tw.id]; if(!el) continue;
+    const st=towerStats(tw);
+    el.style.width=Math.min(100,(tw.p/st.interval)*100)+"%";
+  }
+}
+
+/* ============================================================
+   HELP
+   ============================================================ */
+function help(){
+  $("mbox").innerHTML=
+  '<h2>⛏️ Mutant Ore Tycoon — how to play</h2>'+
+  '<p>Your towers mine ore automatically. Sell ore for coins, buy more towers, and <b>merge</b> them into higher tiers. '+
+  'Daily events <b>mutate</b> your towers, and the <b>Forge</b> bolts permanent traits onto them.</p>'+
+  '<h3>🔀 Merging</h3><ul>'+
+  '<li>Two towers of the <b>same tier</b> merge into one tower of the next tier (up to Tier '+MAXTIER+' 🌌 Voidstone).</li>'+
+  '<li><b>Drag one tower onto another</b>, or select one and press 🔀 Merge.</li>'+
+  '<li>The result keeps the <b>better mutation</b> — with a 25% chance it evolves one rank higher.</li>'+
+  '<li>Up to '+MAXTRAITS+' traits are inherited from the two parents, and levels partially carry over.</li></ul>'+
+  '<h3>🧬 Mutations</h3>'+
+  '<p>Every in-game day ('+DAY_LEN+' seconds) an event fires, and many of them roll mutations on your towers. '+
+  'A tower only ever accepts a <b>better</b> mutation, never a worse one. Mutated towers produce mutated ore, '+
+  'which is stored separately and sells at a large markup.</p>'+
+  '<div class="gridref">'+MUTS.map(m=>'<div><b style="color:'+m.c+'">'+m.e+' '+m.n+'</b><br>'+
+    '<span style="color:#93a0c8">x'+m.val+' value · x'+m.spd+' speed · weight '+m.w+'</span></div>').join("")+'</div>'+
+  '<h3>🔨 Forge traits ('+MAXTRAITS+' per tower)</h3>'+
+  '<div class="gridref">'+TRAITS.map(t=>'<div><b>'+t.e+' '+t.n+'</b><br><span style="color:#93a0c8">'+t.d+'</span></div>').join("")+'</div>'+
+  '<h3>📅 Events</h3>'+
+  '<div class="gridref">'+EVENTS.map(e=>'<div><b>'+e.e+' '+e.n+'</b><br><span style="color:#93a0c8">'+e.d+'</span></div>').join("")+'</div>'+
+  '<h3>🔷 Retiring</h3>'+
+  '<p>Once you have banked enough lifetime coins you can retire for Legacy Shards: +5% harvest speed and '+
+  '+3% sell value each, permanently, across every future run.</p>'+
+  '<h3>💡 Tips</h3><ul>'+
+  '<li>Merge <b>mutated</b> towers together — the better mutation survives and can evolve.</li>'+
+  '<li>💰 Greedy + 💎 Refined on a high-tier tower is a huge coin engine.</li>'+
+  '<li>♾️ Eternal towers buff everything else, so build one early and never scrap it.</li>'+
+  '<li>Hoard ore through the day, then dump it all during 🌕 Blood Moon or 💰 Market Boom.</li>'+
+  '<li>The game auto-saves and keeps mining while you are away (up to 8 hours at half speed).</li></ul>'+
+  '<p style="margin-top:14px"><button class="btn p" id="mClose">Got it — back to mining</button></p>';
+  $("modal").classList.add("on");
+  $("mClose").onclick=()=>$("modal").classList.remove("on");
+}
+
+/* ============================================================
+   BOOT / LOOP
+   ============================================================ */
+function offlineCatchUp(){
+  const dt=(Date.now()-(S.t||Date.now()))/1000;
+  if(dt<60) return;
+  const capped=Math.min(dt,8*3600);
+  const before=S.coins;
+  const invBefore=JSON.stringify(S.inv);
+  const saved=S.buff.spd;
+  S.buff.spd=saved*0.5;               // offline runs at half rate
+  tick(capped);
+  S.buff.spd=saved;
+  const gained=S.coins-before;
+  if(gained>0 || invBefore!==JSON.stringify(S.inv)){
+    logE("🌙","Welcome back","Your mine ran for "+Math.floor(capped/60)+" minutes at half speed"+
+      (gained>0?" and banked 🪙"+fmt(gained):"")+".");
+    setTimeout(()=>toast("🌙 Offline for "+Math.floor(capped/60)+" min — check your 🎒 Ores!"),400);
+  }
+  // days pass while away; the last few still fire their events so you come back to mutations
+  const days=Math.floor(capped/DAY_LEN);
+  const fire=Math.min(days,3);
+  S.day+=days-fire;
+  for(let i=0;i<fire;i++) newDay();
+}
+
+if(!load()){
+  S=newState();
+  addTower(1);
+  logE("🏁","Welcome","Sell your wood, buy a second tower, then merge the two into 🪨 Stone.");
+} else {
+  offlineCatchUp();
+}
+showBanner();
+dirty.all(); renderAll();
+
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{ S.tab=t.dataset.tab; dirty.tab=true; renderAll(); });
+$("btnHelp").onclick=help;
+$("btnSave").onclick=()=>{ save(); toast("💾 Saved."); };
+$("btnWipe").onclick=()=>{ if(confirm("Erase your save and start completely over?")){ localStorage.removeItem("mot_save"); location.reload(); } };
+$("modal").onclick=e=>{ if(e.target.id==="modal") $("modal").classList.remove("on"); };
+window.addEventListener("beforeunload",save);
+
+let last=performance.now(), acc=0, saveT=0;
+function loop(now){
+  let dt=(now-last)/1000; last=now;
+  if(dt>1) dt=1;
+  tick(dt);
+  S.dayT+=dt;
+  if(S.dayT>=DAY_LEN){ S.dayT-=DAY_LEN; newDay(); }
+  acc+=dt; saveT+=dt;
+  renderHUD();
+  if(acc>0.45){
+    acc=0;
+    if(S.tab==="bag") dirty.bag=true;
+    dirty.detail=true;
+    renderAll();
+  }
+  if(saveT>10){ saveT=0; save(); }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
