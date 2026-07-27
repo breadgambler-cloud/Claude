@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>OUTLINE — Boss Rush</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="stage">
+    <canvas id="game" width="240" height="240"></canvas>
+
+    <!-- MENU -->
+    <div id="menu" class="overlay">
+      <h1 class="logo">OUTLINE</h1>
+      <p class="tag">A PIXEL BOSS RUSH</p>
+      <div class="playerPreview"></div>
+      <button id="startBtn" class="btn big">START</button>
+      <div class="controls">
+        <p><b>MOVE</b> WASD / ARROWS</p>
+        <p><b>AIM &amp; SHOOT</b> MOUSE (HOLD)</p>
+        <p><b>MUTE</b> M &nbsp; <b>PAUSE</b> P</p>
+      </div>
+    </div>
+
+    <!-- SHOP -->
+    <div id="shop" class="overlay hidden">
+      <h2 class=" shopTitle">SHOP</h2>
+      <p class="shopSub">SPEND COINS BEFORE THE NEXT BOSS</p>
+      <div class="wallet"><span id="shopCoins">0</span> <span class="coinIcon">◈</span></div>
+      <div id="shopList" class="shopList"></div>
+      <button id="nextBtn" class="btn big">NEXT BOSS ▶</button>
+    </div>
+
+    <!-- GAME OVER / WIN -->
+    <div id="ending" class="overlay hidden">
+      <h2 id="endTitle" class="endTitle">GAME OVER</h2>
+      <p id="endSub" class="endSub"></p>
+      <button id="againBtn" class="btn big">TRY AGAIN</button>
+    </div>
+
+    <!-- PAUSE -->
+    <div id="pause" class="overlay hidden">
+      <h2 class="endTitle">PAUSED</h2>
+      <p class="endSub">PRESS P TO RESUME</p>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>

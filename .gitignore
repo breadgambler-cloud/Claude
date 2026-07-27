@@ -1,0 +1,5 @@
+node_modules/
+*.png
+smoketest.mjs
+action.mjs
+package*.json

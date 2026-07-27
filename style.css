@@ -1,0 +1,156 @@
+/* ==========================================================================
+   OUTLINE — Boss Rush : styles
+   Arcade / pixel look. All UI is chunky, uppercase, neon-on-black.
+   ========================================================================== */
+
+:root{
+  --bg:#0a0a12;
+  --panel:#12121f;
+  --ink:#e8e8f0;
+  --dim:#7a7a9a;
+  --red:#ff3b46;
+  --coin:#ffd23f;
+  --accent:#3fe0ff;
+  --green:#4dff88;
+}
+
+*{ box-sizing:border-box; margin:0; padding:0; }
+
+html,body{
+  height:100%;
+  background:#000;
+  color:var(--ink);
+  font-family:"Courier New",ui-monospace,monospace;
+  font-weight:700;
+  letter-spacing:1px;
+  text-transform:uppercase;
+  overflow:hidden;
+  user-select:none;
+  -webkit-user-select:none;
+}
+
+/* Center the game stage on screen */
+body{ display:flex; align-items:center; justify-content:center; }
+
+#stage{
+  position:relative;
+  /* Square stage that scales to fit the smaller screen dimension */
+  width:min(96vw,96vh);
+  height:min(96vw,96vh);
+  background:var(--bg);
+  border:4px solid #22223a;
+  box-shadow:0 0 0 4px #000, 0 0 40px rgba(63,224,255,.15);
+  image-rendering:pixelated;
+}
+
+/* The low-res canvas is scaled up with crisp pixels */
+#game{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  image-rendering:pixelated;
+  image-rendering:crisp-edges;
+  cursor:crosshair;
+  touch-action:none;
+}
+
+/* ---- Overlays (menu / shop / ending / pause) ---- */
+.overlay{
+  position:absolute;
+  inset:0;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:2.5%;
+  padding:6%;
+  background:rgba(10,10,18,.92);
+  backdrop-filter:blur(2px);
+  text-align:center;
+  z-index:5;
+}
+.hidden{ display:none !important; }
+
+.logo{
+  font-size:clamp(28px,11vmin,84px);
+  color:var(--ink);
+  letter-spacing:6px;
+  text-shadow:4px 4px 0 var(--red), 8px 8px 0 rgba(0,0,0,.6);
+}
+.tag{ color:var(--accent); font-size:clamp(9px,2.4vmin,15px); letter-spacing:3px; }
+
+.playerPreview{
+  width:clamp(28px,9vmin,60px);
+  aspect-ratio:1;
+  border-radius:50%;
+  background:#000;
+  border:clamp(3px,1.2vmin,8px) solid var(--red);
+  box-shadow:0 0 18px rgba(255,59,70,.5);
+  animation:bob 1.6s ease-in-out infinite;
+}
+@keyframes bob{ 0%,100%{transform:translateY(-6%)} 50%{transform:translateY(6%)} }
+
+.controls{ color:var(--dim); font-size:clamp(8px,2vmin,12px); line-height:1.9; margin-top:2%; }
+.controls b{ color:var(--ink); }
+
+/* ---- Buttons ---- */
+.btn{
+  font:inherit;
+  text-transform:uppercase;
+  color:#000;
+  background:var(--accent);
+  border:none;
+  padding:.7em 1.6em;
+  cursor:pointer;
+  letter-spacing:2px;
+  box-shadow:5px 5px 0 #0b6b7d;
+  transition:transform .05s, box-shadow .05s, background .1s;
+}
+.btn:hover{ background:#7fefff; }
+.btn:active{ transform:translate(5px,5px); box-shadow:0 0 0 #0b6b7d; }
+.btn.big{ font-size:clamp(12px,3.4vmin,20px); }
+
+/* ---- Shop ---- */
+.shopTitle{ font-size:clamp(20px,6vmin,44px); letter-spacing:5px; color:var(--coin); text-shadow:3px 3px 0 #7a5f00; }
+.shopSub{ color:var(--dim); font-size:clamp(8px,2vmin,12px); }
+.wallet{ font-size:clamp(14px,4vmin,26px); color:var(--coin); }
+.coinIcon{ color:var(--coin); }
+
+.shopList{
+  width:100%;
+  max-width:560px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:2.2%;
+  max-height:54%;
+  overflow-y:auto;
+  padding:1%;
+}
+@media (max-width:420px){ .shopList{ grid-template-columns:1fr; } }
+
+.shopItem{
+  background:var(--panel);
+  border:2px solid #2c2c48;
+  padding:8px 10px;
+  text-align:left;
+  cursor:pointer;
+  transition:border-color .1s, transform .05s;
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+}
+.shopItem:hover{ border-color:var(--accent); }
+.shopItem:active{ transform:scale(.98); }
+.shopItem .name{ font-size:clamp(9px,2.3vmin,13px); color:var(--ink); }
+.shopItem .desc{ font-size:clamp(7px,1.8vmin,10px); color:var(--dim); text-transform:none; letter-spacing:0; line-height:1.3; }
+.shopItem .cost{ font-size:clamp(9px,2.3vmin,13px); color:var(--coin); }
+.shopItem.maxed{ opacity:.45; cursor:not-allowed; border-color:#2c2c48; }
+.shopItem.cant .cost{ color:var(--red); }
+
+.endTitle{ font-size:clamp(22px,8vmin,60px); letter-spacing:4px; text-shadow:4px 4px 0 rgba(0,0,0,.6); }
+.endSub{ color:var(--dim); font-size:clamp(9px,2.4vmin,14px); line-height:1.7; }
+
+/* thin scrollbar for shop */
+.shopList::-webkit-scrollbar{ width:8px; }
+.shopList::-webkit-scrollbar-thumb{ background:#2c2c48; }
