@@ -68,6 +68,10 @@ main{flex:1;display:flex;gap:12px;padding:12px;overflow:hidden}
 .tower .tr{font-size:11px;height:15px;letter-spacing:1px}
 .tower .bar{height:5px;background:#0a1024;border-radius:99px;overflow:hidden;margin-top:3px;border:1px solid var(--line)}
 .tower .bar>i{display:block;height:100%;background:linear-gradient(90deg,#4bd,#7c6bff);width:0}
+.tower .mprev{
+  position:absolute;left:0;right:0;bottom:-1px;background:#12351fee;border-top:1px solid #5cff9d55;
+  border-radius:0 0 11px 11px;font-size:10px;font-weight:800;color:var(--good);padding:2px 0;letter-spacing:.3px
+}
 .slot{
   border:2px dashed #33427a;border-radius:12px;display:flex;align-items:center;justify-content:center;
   flex-direction:column;color:var(--dim);font-size:11px;min-height:118px;cursor:pointer;transition:.12s
@@ -165,6 +169,7 @@ main{flex:1;display:flex;gap:12px;padding:12px;overflow:hidden}
         <button class="tab on" data-tab="shop">🏪 Store</button>
         <button class="tab" data-tab="forge">🔨 Forge</button>
         <button class="tab" data-tab="bag">🎒 Ores</button>
+        <button class="tab" data-tab="goals">🏆 Goals</button>
         <button class="tab" data-tab="log">📜 Log</button>
       </div>
       <div class="pbody" id="tabBody"></div>
@@ -203,13 +208,18 @@ const MUTS = [
   {id:"frozen", n:"Frozen",      e:"❄️", val:4,   spd:0.65, w:14,   c:"#8fe6ff"},
   {id:"lucky",  n:"Lucky",       e:"🍀", val:3,   spd:1.1,  w:11,   c:"#7dff9c", luck:1.5},
   {id:"radio",  n:"Radioactive", e:"☢️", val:6,   spd:1.15, w:7,    c:"#c8ff5c"},
+  {id:"viral",  n:"Viral",       e:"🦠", val:8,   spd:1.3,  w:5.5,  c:"#9dff8f"},
   {id:"cryst",  n:"Crystalline", e:"💠", val:9,   spd:1.2,  w:4.5,  c:"#9ad8ff"},
+  {id:"alch",   n:"Alchemical",  e:"⚗️", val:16,  spd:1.05, w:3,    c:"#7dffd8"},
   {id:"blood",  n:"Bloodied",    e:"🩸", val:13,  spd:0.85, w:2.5,  c:"#ff6b7f"},
   {id:"rain",   n:"Rainbow",     e:"🌈", val:20,  spd:1.5,  w:1.2,  c:"#ff9ce8"},
   {id:"void",   n:"Void",        e:"🌑", val:35,  spd:0.75, w:0.6,  c:"#a06bff"},
-  {id:"regal",  n:"Regal",       e:"👑", val:60,  spd:1.35, w:0.25, c:"#ffd35c"}
+  {id:"stellar",n:"Stellar",     e:"🌟", val:45,  spd:1.25, w:0.4,  c:"#ffe08f"},
+  {id:"regal",  n:"Regal",       e:"👑", val:60,  spd:1.35, w:0.25, c:"#ffd35c"},
+  {id:"singu",  n:"Singularity", e:"🕳️", val:120, spd:1.6,  w:0.1,  c:"#d7bcff"}
 ];
 const MUTMAP = {}; MUTS.forEach((m,i)=>{ m.rank=i; MUTMAP[m.id]=m; });
+const RARE_RANK = 7;   // Alchemical and above count as "rare" for rare-only events
 
 /* 10 forge traits */
 const TRAITS = [
@@ -225,7 +235,50 @@ const TRAITS = [
   {id:"eternal",   n:"Eternal",   e:"♾️",  d:"+8% harvest speed to every other tower."}
 ];
 const TRAITMAP = {}; TRAITS.forEach(t=>TRAITMAP[t.id]=t);
-const MAXTRAITS = 3;
+const BASE_TRAITS = 3;
+function maxTraits(){ return BASE_TRAITS + (S && S.up ? S.up.matrix : 0); }
+
+/* achievements — each grants a small permanent bonus */
+const ACHS=[
+  {id:"first",  e:"🌱", n:"First Harvest",  d:"Mine your very first ore.",                b:{k:"spd", v:0.02}, c:()=>S.stats.harvested>0},
+  {id:"stone",  e:"🪨", n:"Stone Age",      d:"Own a Tier 2 tower.",                      b:{k:"spd", v:0.03}, c:()=>bestTier()>=2},
+  {id:"indus",  e:"⚙️", n:"Industrialist",  d:"Own a Tier 4 tower.",                      b:{k:"spd", v:0.05}, c:()=>bestTier()>=4},
+  {id:"dhands", e:"💎", n:"Diamond Hands",  d:"Own a Tier 7 tower.",                      b:{k:"sell",v:0.08}, c:()=>bestTier()>=7},
+  {id:"void",   e:"🌌", n:"Void Walker",    d:"Own a Tier 10 Voidstone tower.",           b:{k:"spd", v:0.15}, c:()=>bestTier()>=10},
+  {id:"mutant", e:"🧬", n:"Mutant",         d:"Have a mutated tower.",                    b:{k:"luck",v:0.05}, c:()=>S.towers.some(t=>t.mut)},
+  {id:"chroma", e:"🌈", n:"Chromatic",      d:"Land a Rainbow mutation or better.",       b:{k:"luck",v:0.10}, c:()=>S.seen.some(id=>MUTMAP[id]&&MUTMAP[id].rank>=MUTMAP.rain.rank)},
+  {id:"royal",  e:"👑", n:"Royalty",        d:"Land a Regal or Singularity mutation.",    b:{k:"sell",v:0.20}, c:()=>S.seen.indexOf("regal")>=0||S.seen.indexOf("singu")>=0},
+  {id:"smith",  e:"🔨", n:"Blacksmith",     d:"Forge 5 traits.",                          b:{k:"spd", v:0.05}, c:()=>S.stats.forged>=5},
+  {id:"land",   e:"🏗️", n:"Landlord",       d:"Expand your plot to 12 slots.",            b:{k:"sell",v:0.05}, c:()=>S.slots>=12},
+  {id:"mill",   e:"💰", n:"Millionaire",    d:"Earn 1M coins in a run.",                  b:{k:"sell",v:0.05}, c:()=>S.lifetime>=1e6},
+  {id:"bill",   e:"🏦", n:"Billionaire",    d:"Earn 1B coins in a run.",                  b:{k:"sell",v:0.10}, c:()=>S.lifetime>=1e9},
+  {id:"fusion", e:"🔀", n:"Fusionist",      d:"Complete 25 merges.",                      b:{k:"spd", v:0.06}, c:()=>S.stats.merges>=25},
+  {id:"vet",    e:"📅", n:"Veteran",        d:"Survive to day 50.",                       b:{k:"sell",v:0.06}, c:()=>S.day>=50},
+  {id:"reborn", e:"🔷", n:"Reborn",         d:"Retire at least once.",                    b:{k:"spd", v:0.10}, c:()=>S.shards>0},
+  {id:"coll",   e:"🧪", n:"Collector",      d:"Discover 10 different mutations.",         b:{k:"luck",v:0.10}, c:()=>S.seen.length>=10}
+];
+const ACHMAP={}; ACHS.forEach(a=>ACHMAP[a.id]=a);
+const BONUSNAME={spd:"harvest speed", sell:"sell value", luck:"mutation luck"};
+function bonusText(b){ return "+"+Math.round(b.v*100)+"% "+BONUSNAME[b.k]; }
+function achBonus(kind){
+  let v=0;
+  for(const id of S.ach){ const a=ACHMAP[id]; if(a && a.b.k===kind) v+=a.b.v; }
+  return v;
+}
+function bestTier(){ let t=0; for(const x of S.towers) if(x.tier>t) t=x.tier; return t; }
+function checkAch(){
+  for(const a of ACHS){
+    if(S.ach.indexOf(a.id)>=0) continue;
+    let done=false;
+    try{ done=a.c(); }catch(e){}
+    if(done){
+      S.ach.push(a.id);
+      toast("🏆 <b>"+a.n+"</b> unlocked — "+bonusText(a.b));
+      logE("🏆","Achievement: "+a.n, a.d+" Reward: "+bonusText(a.b)+".");
+      dirty.tab=true;
+    }
+  }
+}
 
 const DAY_LEN = 90;      // seconds per in-game day
 const START_SLOTS = 6;
@@ -240,10 +293,11 @@ function newState(shards){
     coins:60, lifetime:0, shards:shards||0,
     day:1, dayT:0, towers:[], nextId:1,
     slots:START_SLOTS, inv:{}, bought:0,
-    up:{tools:0, guild:0, charm:0, plot:0, auto:0},
-    autoSell:false,
+    up:{tools:0, guild:0, charm:0, plot:0, auto:0, matrix:0, automerge:0},
+    autoSell:false, autoMerge:false,
+    ach:[], seen:[], stats:{merges:0, forged:0, harvested:0, crates:0, serums:0, splices:0, refines:0},
     buff:{spd:1, sell:1, mut:0, shop:1, name:"", e:""},
-    log:[], t:Date.now(), tab:"shop", sel:null, mergeFrom:null, offer:null
+    log:[], t:Date.now(), tab:"shop", sel:null, mergeFrom:null, spliceTo:null, offer:null
   };
 }
 function save(){ S.t=Date.now(); try{ localStorage.setItem("mot_save",JSON.stringify(S)); }catch(e){} }
@@ -253,9 +307,12 @@ function load(){
     const d=JSON.parse(raw); if(!d||!Array.isArray(d.towers)) return false;
     S=Object.assign(newState(),d);
     S.buff=Object.assign({spd:1,sell:1,mut:0,shop:1,name:"",e:""},d.buff||{});
-    S.up=Object.assign({tools:0,guild:0,charm:0,plot:0,auto:0},d.up||{});
+    S.up=Object.assign({tools:0,guild:0,charm:0,plot:0,auto:0,matrix:0,automerge:0},d.up||{});
+    S.stats=Object.assign({merges:0,forged:0,harvested:0,crates:0,serums:0,splices:0,refines:0},d.stats||{});
+    S.ach=Array.isArray(d.ach)?d.ach:[];
+    S.seen=Array.isArray(d.seen)?d.seen:[];
     S.towers.forEach(t=>{ t.traits=t.traits||[]; t.p=t.p||0; t.cd=0; });
-    S.sel=null; S.mergeFrom=null; S.offer=null;
+    S.sel=null; S.mergeFrom=null; S.spliceTo=null; S.offer=null;
     return true;
   }catch(e){ return false; }
 }
@@ -284,7 +341,7 @@ function toast(msg){
   const d=document.createElement("div"); d.className="toast"; d.innerHTML=msg;
   const box=document.getElementById("toasts");
   box.appendChild(d);
-  while(box.children.length>5) box.removeChild(box.firstChild);
+  while(box.children.length>4) box.removeChild(box.firstChild);
   setTimeout(()=>{ d.style.transition="opacity .4s"; d.style.opacity="0"; },1900);
   setTimeout(()=>d.remove(),2400);
 }
@@ -300,8 +357,8 @@ function getTower(id){ return S.towers.find(t=>t.id===id)||null; }
 /* ============================================================
    ECONOMY / STATS
    ============================================================ */
-function globalSpeed(){ return (1+0.12*S.up.tools) * (1+0.05*S.shards) * S.buff.spd; }
-function sellMult(){ return (1+0.15*S.up.guild) * (1+0.03*S.shards) * S.buff.sell; }
+function globalSpeed(){ return (1+0.12*S.up.tools) * (1+0.05*S.shards) * (1+achBonus("spd")) * S.buff.spd; }
+function sellMult(){ return (1+0.15*S.up.guild) * (1+0.03*S.shards) * (1+achBonus("sell")) * S.buff.sell; }
 function unitPrice(tier,mutId){
   const m = mutId?MUTMAP[mutId]:null;
   return MATS[tier-1].v * (m?m.val:1) * sellMult();
@@ -376,6 +433,7 @@ function harvest(tw,cycles){
                hiT*unitPrice(Math.min(MAXTIER,tw.tier+1),tw.mut) ));
   }
   tw.made=(tw.made||0)+total+hiT;
+  S.stats.harvested+=total+hiT;
 }
 function tick(dt){
   for(const tw of S.towers){
@@ -390,13 +448,14 @@ function tick(dt){
     if(tw.cd>0) tw.cd=Math.max(0,tw.cd-dt);
   }
   if(S.autoSell && S.up.auto) sellAll();
+  if(S.autoMerge && S.up.automerge) autoMergeStep();
 }
 
 /* ============================================================
    MUTATIONS
    ============================================================ */
 function luckOf(tw){
-  let l = 1 + 0.08*S.up.charm + S.buff.mut;
+  let l = 1 + 0.08*S.up.charm + achBonus("luck") + S.buff.mut;
   if(has(tw,"fortunate")) l*=1.6;
   const m=tw.mut?MUTMAP[tw.mut]:null;
   if(m && m.luck) l*=m.luck;
@@ -411,10 +470,11 @@ function rollMutation(tw,chance,filter,rareBias){
     if(!pool.length) continue;
     const m = wpick(pool, x=> rareBias?Math.pow(x.w,0.45):x.w );
     const cur = tw.mut?MUTMAP[tw.mut]:null;
-    if(!cur || m.rank>cur.rank){ tw.mut=m.id; got=m; }
+    if(!cur || m.rank>cur.rank){ tw.mut=m.id; got=m; discover(m.id); }
   }
   return got;
 }
+function discover(id){ if(S.seen.indexOf(id)<0){ S.seen.push(id); dirty.tab=true; } }
 function mutateSweep(chance,filter,rareBias){
   const hits=[];
   for(const tw of S.towers){
@@ -462,11 +522,31 @@ const EVENTS=[
      return "No free slot for the gift — but the store is 30% off."; }},
 
   {e:"🌪️",n:"Void Rift",w:4,d:"Reality tears open: 14% chance of a RARE-ONLY mutation on each tower.",
-   run(){ const h=mutateSweep(0.14,m=>m.rank>=6,true);
+   run(){ const h=mutateSweep(0.14,m=>m.rank>=RARE_RANK,true);
      return h.length?h.length+" tower(s) touched by the void.":"The rift closed quietly."; }},
 
+  {e:"🐉",n:"Dragon's Hoard",w:3,d:"A sleeping wyrm's stash is uncovered — a huge coin payout and a 15% rare mutation roll.",
+   run(){ const g=Math.max(5000,totalIncome()*400); earn(g);
+     mutateSweep(0.15,m=>m.rank>=RARE_RANK,true);
+     return "Looted 🪙"+fmt(g)+"."; }},
+
+  {e:"🌋",n:"Volcanic Eruption",w:7,d:"Magma floods the shafts: x3 speed today, and an 18% roll for heat-born mutations.",
+   run(){ S.buff.spd=3;
+     mutateSweep(0.18,m=>["burn","radio","blood","viral","alch","stellar"].indexOf(m.id)>=0);
+     return "Speed x3 for the day."; }},
+
+  {e:"🧫",n:"Gene Storm",w:5,d:"Airborne spores reroll every ALREADY-mutated tower with a rare bias — they can only improve.",
+   run(){ let c=0;
+     for(const tw of S.towers){ if(tw.mut && rollMutation(tw,999,null,true)) c++; }
+     dirty.towers=true;
+     return c?c+" mutation(s) improved.":"Nothing improved this time."; }},
+
+  {e:"🧿",n:"Cursed Auction",w:6,d:"A cursed bargain: ore sells for half today, but every tower gets a 40% mutation roll.",
+   run(){ S.buff.sell=0.5; const h=mutateSweep(0.40);
+     return "Sell x0.5, but "+h.length+" tower(s) mutated."; }},
+
   {e:"🧪",n:"Alchemist's Visit",w:8,d:"A wandering alchemist grafts a free trait onto one tower.",
-   run(){ const cands=S.towers.filter(t=>t.traits.length<MAXTRAITS);
+   run(){ const cands=S.towers.filter(t=>t.traits.length<maxTraits());
      if(!cands.length) return "Every tower was already full of traits.";
      const tw=pick(cands);
      const av=TRAITS.filter(t=>!has(tw,t.id));
@@ -517,7 +597,7 @@ function showBanner(){
    ============================================================ */
 function addTower(tier,mut,traits){
   const tw={id:S.nextId++,tier:tier,lvl:1,mut:mut||null,
-            traits:traits?traits.slice(0,MAXTRAITS):[],p:0,cd:0,made:0};
+            traits:traits?traits.slice(0,maxTraits()):[],p:0,cd:0,made:0};
   S.towers.push(tw); dirty.towers=true; return tw;
 }
 function towerCost(){ return Math.floor(25*Math.pow(1.19,S.bought)*S.buff.shop); }
@@ -534,12 +614,18 @@ function upgrade(tw){
   toast("⬆️ "+MATS[tw.tier-1].e+" tower is now Lv."+tw.lvl);
 }
 function canMerge(a,b){ return !!a && !!b && a.id!==b.id && a.tier===b.tier && a.tier<MAXTIER; }
+/* The better of the two mutations ALWAYS carries over — a merge can never
+   downgrade or lose a mutation. 25% of the time it also evolves one rank. */
+function bestMutOf(a,b){
+  const ma=a.mut?MUTMAP[a.mut]:null, mb=b.mut?MUTMAP[b.mut]:null;
+  if(ma && mb) return ma.rank>=mb.rank?ma:mb;
+  return ma||mb||null;
+}
 function doMerge(a,b){
   if(!canMerge(a,b)) return;
   const tier=a.tier+1;
   const lvl=Math.max(1,Math.floor((a.lvl+b.lvl)/3));
-  const ma=a.mut?MUTMAP[a.mut]:null, mb=b.mut?MUTMAP[b.mut]:null;
-  const best=(ma&&mb)?(ma.rank>mb.rank?ma:mb):(ma||mb);
+  const best=bestMutOf(a,b);
   let mut=null, evolved=false;
   if(best){
     mut=best.id;
@@ -549,14 +635,16 @@ function doMerge(a,b){
   a.traits.concat(b.traits).forEach(t=>{ if(pool.indexOf(t)<0) pool.push(t); });
   pool.sort(()=>Math.random()-0.5);
   S.towers=S.towers.filter(t=>t.id!==a.id && t.id!==b.id);
-  const tw=addTower(tier,mut,pool.slice(0,MAXTRAITS));
+  const tw=addTower(tier,mut,pool.slice(0,maxTraits()));
   tw.lvl=lvl;
-  S.sel=tw.id; S.mergeFrom=null; S.offer=null;
+  if(mut) discover(mut);
+  S.stats.merges++;
+  S.sel=tw.id; S.mergeFrom=null; S.spliceTo=null; S.offer=null;
   dirty.towers=true; dirty.detail=true;
   toast("🔀 Merged into <b>"+MATS[tier-1].e+" Tier "+tier+" "+MATS[tier-1].n+"</b>"+
-        (mut?" "+MUTMAP[mut].e+" "+MUTMAP[mut].n+(evolved?" (evolved!)":""):"")+" Lv."+lvl);
+        (mut?" — kept "+MUTMAP[mut].e+" "+MUTMAP[mut].n+(evolved?" <b>(evolved!)</b>":""):"")+" Lv."+lvl);
   logE("🔀","Merge","Two Tier "+a.tier+" towers became a Tier "+tier+" "+MATS[tier-1].n+" tower"+
-       (evolved?" — and the mutation evolved to "+MUTMAP[mut].n+"!":"."));
+       (best?", keeping the better mutation ("+MUTMAP[mut].n+")"+(evolved?" — which then evolved!":"."):"."));
 }
 function scrapTower(tw){
   const refund=Math.floor(25*Math.pow(3.15,tw.tier-1)*0.6*(1+0.2*(tw.lvl-1)));
@@ -582,12 +670,12 @@ function makeOffer(tw){
   S.offer={ id:tw.id, list:av.sort(()=>Math.random()-0.5).slice(0,3).map(t=>t.id) };
 }
 function applyTrait(tw,tid){
-  if(tw.traits.length>=MAXTRAITS){ toast("❌ Max "+MAXTRAITS+" traits."); return; }
+  if(tw.traits.length>=maxTraits()){ toast("❌ Max "+maxTraits()+" traits."); return; }
   const c=forgeCost(tw);
   if(S.coins<c.coins){ toast("❌ Need 🪙"+fmt(c.coins)); return; }
   if(invCount(c.tier)<c.mat){ toast("❌ Need "+c.mat+" "+MATS[c.tier-1].e+" "+MATS[c.tier-1].n); return; }
   S.coins-=c.coins; takeInv(c.tier,c.mat);
-  tw.traits.push(tid); S.offer=null;
+  tw.traits.push(tid); S.offer=null; S.stats.forged++;
   dirty.towers=true; dirty.detail=true; dirty.tab=true;
   const t=TRAITMAP[tid];
   toast("🔨 Forged <b>"+t.e+" "+t.n+"</b> onto a Tier "+tw.tier+" tower!");
@@ -602,6 +690,76 @@ function stripTraits(tw){
   toast("🧯 Traits stripped.");
 }
 
+/* ---------- mutation chamber ---------- */
+function serumCost(tw){
+  const rank=tw.mut?MUTMAP[tw.mut].rank:-1;
+  return Math.floor(2000*Math.pow(1.9,tw.tier-1)*Math.pow(1.75,rank+1));
+}
+function injectSerum(tw){
+  const c=serumCost(tw);
+  if(S.coins<c){ toast("❌ Need 🪙"+fmt(c)); return; }
+  S.coins-=c; S.stats.serums++;
+  const before=tw.mut;
+  const m=rollMutation(tw,999,null,false);      // guaranteed roll, still never downgrades
+  dirty.towers=true; dirty.detail=true; dirty.tab=true;
+  if(m){
+    toast("🧬 The serum took hold: <b>"+m.e+" "+m.n+"</b>!");
+    logE("🧬","Serum",(before?"Upgraded from "+MUTMAP[before].n+" to ":"Mutated into ")+m.n+
+         " on a Tier "+tw.tier+" "+MATS[tw.tier-1].n+" tower.");
+  } else {
+    toast("🧪 The serum fizzled — "+MUTMAP[tw.mut].n+" held firm.");
+  }
+}
+function spliceCost(tw){ return Math.floor(6000*Math.pow(1.9,tw.tier-1)); }
+function canSplice(target,donor){
+  if(!target || !donor || target.id===donor.id || !donor.mut) return false;
+  const cur=target.mut?MUTMAP[target.mut]:null;
+  return !cur || MUTMAP[donor.mut].rank>cur.rank;
+}
+function doSplice(target,donor){
+  if(!canSplice(target,donor)){ toast("❌ The donor must carry a BETTER mutation."); return; }
+  const c=spliceCost(target);
+  if(S.coins<c){ toast("❌ Need 🪙"+fmt(c)); return; }
+  S.coins-=c; S.stats.splices++;
+  const m=MUTMAP[donor.mut];
+  target.mut=donor.mut; discover(donor.mut);
+  S.towers=S.towers.filter(t=>t.id!==donor.id);
+  S.spliceTo=null;
+  dirty.towers=true; dirty.detail=true; dirty.tab=true;
+  toast("🧫 Spliced <b>"+m.e+" "+m.n+"</b> across — the donor tower dissolved.");
+  logE("🧫","Splice","Transferred "+m.n+" onto a Tier "+target.tier+" "+MATS[target.tier-1].n+" tower.");
+}
+
+/* ---------- refinery ---------- */
+const REFINE_RATIO = 6;
+function refine(key){
+  const parts=key.split("|"), tier=+parts[0], mut=parts[1]||null;
+  if(tier>=MAXTIER){ toast("❌ Voidstone cannot be refined further."); return; }
+  if((S.inv[key]||0) < REFINE_RATIO){ toast("❌ Need "+REFINE_RATIO+" to refine."); return; }
+  const batches=Math.floor(S.inv[key]/REFINE_RATIO);
+  S.inv[key]-=batches*REFINE_RATIO;
+  if(S.inv[key]<=0.0001) delete S.inv[key];
+  addInv(tier+1,mut,batches);
+  S.stats.refines+=batches;
+  dirty.tab=true; dirty.bag=true;
+  toast("⚗️ Refined "+batches*REFINE_RATIO+" "+MATS[tier-1].e+" into "+batches+" "+MATS[tier].e+
+        (mut?" "+MUTMAP[mut].e:""));
+}
+
+/* ---------- auto-merge (only touches plain towers, never your mutated ones) ---------- */
+function autoMergeStep(){
+  for(let i=0;i<S.towers.length;i++){
+    const a=S.towers[i];
+    if(a.mut || a.traits.length) continue;
+    for(let j=i+1;j<S.towers.length;j++){
+      const b=S.towers[j];
+      if(b.mut || b.traits.length) continue;
+      if(canMerge(a,b)){ doMerge(a,b); return true; }
+    }
+  }
+  return false;
+}
+
 /* ---------- store ---------- */
 const CRATES=[
   {e:"📦",n:"Supply Crate",     lo:1,hi:3,base:900},
@@ -614,6 +772,7 @@ function openCrate(c){
   if(S.towers.length>=S.slots){ toast("❌ No free slot — expand your plot!"); return false; }
   const t=ri(c.lo,c.hi);
   const tw=addTower(t);
+  S.stats.crates++;
   if(Math.random()<0.25) rollMutation(tw,1);
   toast(c.e+" Opened: <b>Tier "+t+" "+MATS[t-1].n+"</b> "+MATS[t-1].e+(tw.mut?" "+MUTMAP[tw.mut].e+" "+MUTMAP[tw.mut].n:""));
   return true;
@@ -628,8 +787,13 @@ const UPGRADES=[
    cost:()=>Math.floor(900*Math.pow(1.95,S.up.guild)), buy(){ S.up.guild++; }},
   {e:"🔯",n:"Lucky Charm",   d:()=>"+8% mutation chance everywhere (now +"+(S.up.charm*8)+"%).",
    cost:()=>Math.floor(2500*Math.pow(2.2,S.up.charm)), buy(){ S.up.charm++; }},
+  {e:"🧠",n:"Trait Matrix",  d:()=>"+1 trait slot on every tower (now "+maxTraits()+" of "+(BASE_TRAITS+2)+").",
+   cost:()=>Math.floor(60000*Math.pow(8,S.up.matrix)), max:()=>S.up.matrix>=2,
+   buy(){ S.up.matrix++; dirty.towers=true; }},
   {e:"🤖",n:"Auto-Seller",   d:()=>"Unlocks automatic ore selling.",
-   cost:()=>40000, max:()=>S.up.auto>=1, buy(){ S.up.auto=1; S.autoSell=true; }}
+   cost:()=>40000, max:()=>S.up.auto>=1, buy(){ S.up.auto=1; S.autoSell=true; }},
+  {e:"🔁",n:"Auto-Merger",   d:()=>"Automatically merges plain towers — never touches mutated or forged ones.",
+   cost:()=>150000, max:()=>S.up.automerge>=1, buy(){ S.up.automerge=1; S.autoMerge=true; }}
 ];
 function shardsFor(){ return Math.floor(3*Math.sqrt(S.lifetime/5e6)); }
 function prestige(){
@@ -639,7 +803,9 @@ function prestige(){
               " Legacy Shards (+5% speed & +3% sell value each, permanently).")) return;
   const total=S.shards+g;
   const keepLog=S.log.slice(0,8);
-  S=newState(total); S.log=keepLog;
+  const keepAch=S.ach, keepSeen=S.seen, keepStats=S.stats;
+  S=newState(total);
+  S.log=keepLog; S.ach=keepAch; S.seen=keepSeen; S.stats=keepStats;   // meta-progress survives
   addTower(1);
   logE("🔷","Retired","Rebuilt the mine with "+total+" Legacy Shards.");
   dirty.all(); showBanner();
@@ -661,10 +827,19 @@ function renderTowers(){
   for(const tw of S.towers){
     const m=tw.mut?MUTMAP[tw.mut]:null, mat=MATS[tw.tier-1];
     const d=document.createElement("div");
-    let cls="tower";
+    let cls="tower", prev="";
     if(S.sel===tw.id) cls+=" sel";
-    if(S.mergeFrom===tw.id) cls+=" msrc";
-    else if(S.mergeFrom && canMerge(getTower(S.mergeFrom),tw)) cls+=" mtarget";
+    const msrc=getTower(S.mergeFrom), sdst=getTower(S.spliceTo);
+    if(S.mergeFrom===tw.id || S.spliceTo===tw.id) cls+=" msrc";
+    else if(msrc && canMerge(msrc,tw)){
+      cls+=" mtarget";
+      const b=bestMutOf(msrc,tw);
+      prev='<div class="mprev">→ T'+(tw.tier+1)+' '+MATS[tw.tier].e+(b?" "+b.e:"")+'</div>';
+    }
+    else if(sdst && canSplice(sdst,tw)){
+      cls+=" mtarget";
+      prev='<div class="mprev">donate '+MUTMAP[tw.mut].e+'</div>';
+    }
     d.className=cls;
     d.draggable=true;
     d.innerHTML=
@@ -673,7 +848,7 @@ function renderTowers(){
       '<div class="nm" style="color:'+mat.c+'">'+mat.n+'</div>'+
       '<div class="mut" style="color:'+(m?m.c:"#5b6893")+'">'+(m?m.e+" "+m.n:"—")+'</div>'+
       '<div class="tr">'+(traitStr(tw)||"&nbsp;")+'</div>'+
-      '<div class="bar"><i></i></div>';
+      '<div class="bar"><i></i></div>'+prev;
     d.onclick=()=>{
       if(S.mergeFrom && S.mergeFrom!==tw.id){
         const a=getTower(S.mergeFrom);
@@ -681,8 +856,14 @@ function renderTowers(){
         toast("❌ Merging needs two towers of the SAME tier.");
         S.mergeFrom=null; dirty.towers=true; dirty.detail=true; renderAll(); return;
       }
+      if(S.spliceTo && S.spliceTo!==tw.id){
+        const t=getTower(S.spliceTo);
+        if(canSplice(t,tw)){ doSplice(t,tw); renderAll(); return; }
+        toast("❌ The donor must carry a BETTER mutation than the target.");
+        S.spliceTo=null; dirty.towers=true; dirty.detail=true; renderAll(); return;
+      }
       S.sel=(S.sel===tw.id?null:tw.id);
-      S.mergeFrom=null; S.offer=null;
+      S.mergeFrom=null; S.spliceTo=null; S.offer=null;
       dirty.towers=true; dirty.detail=true;
       if(S.tab==="forge") dirty.tab=true;
       renderAll();
@@ -718,6 +899,7 @@ function renderDetail(){
   const mat=MATS[tw.tier-1], m=tw.mut?MUTMAP[tw.mut]:null, st=towerStats(tw);
   const uc=upgradeCost(tw), fc=forgeCost(tw);
   const mates=S.towers.filter(t=>canMerge(tw,t)).length;
+  const donors=S.towers.filter(t=>canSplice(tw,t)).length;
   el.innerHTML=
    '<div class="row" style="margin-bottom:7px">'+
      '<div class="big">'+mat.e+'</div>'+
@@ -740,20 +922,39 @@ function renderDetail(){
      '<button class="btn p" id="dUp"'+(S.coins<uc?" disabled":"")+'>⬆️ Upgrade · 🪙'+fmt(uc)+'</button>'+
      '<button class="btn g" id="dMerge"'+((tw.tier>=MAXTIER||mates===0)?" disabled":"")+'>🔀 '+
        (S.mergeFrom===tw.id?"Cancel merge":"Merge")+' ('+mates+')</button>'+
-     '<button class="btn" id="dForge"'+(tw.traits.length>=MAXTRAITS?" disabled":"")+'>🔨 Forge · 🪙'+
+     '<button class="btn" id="dForge"'+(tw.traits.length>=maxTraits()?" disabled":"")+'>🔨 Forge · 🪙'+
        fmt(fc.coins)+' + '+fc.mat+MATS[fc.tier-1].e+'</button>'+
      '<button class="btn" id="dTap"'+(tw.cd>0?" disabled":"")+'>⛏️ Harvest now</button>'+
+     '<button class="btn" id="dSplice"'+(donors===0?" disabled":"")+'>🧫 '+
+       (S.spliceTo===tw.id?"Cancel splice":"Splice in")+' ('+donors+')</button>'+
      '<button class="btn d sm" id="dScrap">♻️ Scrap</button>'+
+   '</div>'+
+   '<div class="d" style="margin-top:6px">'+
+     (S.mergeFrom===tw.id
+       ? '🔀 Pick a green Tier '+tw.tier+' tower — the badge shows exactly what you get.'
+       : S.spliceTo===tw.id
+       ? '🧫 Pick a green donor tower — its mutation moves here and the donor dissolves. Cost 🪙'+fmt(spliceCost(tw))+'.'
+       : '🔀 A merge <b>always keeps the better mutation</b> of the two towers, and has a 25% chance to evolve it one rank further.')+
    '</div>';
   $("dUp").onclick=()=>{ upgrade(tw); renderAll(); };
   $("dMerge").onclick=()=>{
-    S.mergeFrom=(S.mergeFrom===tw.id?null:tw.id);
+    S.mergeFrom=(S.mergeFrom===tw.id?null:tw.id); S.spliceTo=null;
     if(S.mergeFrom) toast("🔀 Now click another Tier "+tw.tier+" tower to merge.");
+    dirty.towers=true; dirty.detail=true; renderAll();
+  };
+  $("dSplice").onclick=()=>{
+    S.spliceTo=(S.spliceTo===tw.id?null:tw.id); S.mergeFrom=null;
+    if(S.spliceTo) toast("🧫 Click a donor tower to move its mutation here.");
     dirty.towers=true; dirty.detail=true; renderAll();
   };
   $("dForge").onclick=()=>{ S.tab="forge"; S.offer=null; dirty.tab=true; renderAll(); };
   $("dTap").onclick=()=>{ harvest(tw,1); tw.cd=2; dirty.detail=true; renderAll(); toast("⛏️ +"+MATS[tw.tier-1].e); };
   $("dScrap").onclick=()=>{ if(confirm("Scrap this Tier "+tw.tier+" tower?")){ scrapTower(tw); renderAll(); } };
+}
+/* keep the toast stack clear of the action bar, which sits at the viewport bottom on wide screens */
+function placeToasts(){
+  const el=$("detail");
+  $("toasts").style.bottom = (window.innerWidth>900 ? el.offsetHeight+24 : 14)+"px";
 }
 
 function renderTab(){
@@ -795,16 +996,16 @@ function renderTab(){
     const tw=getTower(S.sel);
     if(!tw){
       h+='<div class="d" style="padding:8px">🔨 Select a tower in your mine, then forge <b>traits</b> onto it.<br><br>'+
-         'Each tower holds up to '+MAXTRAITS+' traits. Traits stack with mutations and are '+
-         '<b>inherited when you merge</b> — a merged tower keeps up to '+MAXTRAITS+' traits from its two parents.</div>';
+         'Each tower holds up to '+maxTraits()+' traits. Traits stack with mutations and are '+
+         '<b>inherited when you merge</b> — a merged tower keeps up to '+maxTraits()+' traits from its two parents.</div>';
     } else {
       const fc=forgeCost(tw), mat=MATS[fc.tier-1], have=invCount(fc.tier);
       if(!S.offer || S.offer.id!==tw.id) makeOffer(tw);
       h+='<div class="item"><div class="ic">'+MATS[tw.tier-1].e+'</div><div class="info">'+
          '<div class="t">Tier '+tw.tier+' '+MATS[tw.tier-1].n+' · Lv.'+tw.lvl+'</div>'+
          '<div class="d">Traits: '+(tw.traits.length?tw.traits.map(t=>TRAITMAP[t].e+" "+TRAITMAP[t].n).join(" · "):"none")+
-         ' ('+tw.traits.length+'/'+MAXTRAITS+')</div></div></div>';
-      if(tw.traits.length>=MAXTRAITS){
+         ' ('+tw.traits.length+'/'+maxTraits()+')</div></div></div>';
+      if(tw.traits.length>=maxTraits()){
         h+='<div class="d" style="padding:6px 2px">This tower is at max traits — strip them to start over.</div>';
       } else {
         const afford=S.coins>=fc.coins && have>=fc.mat;
@@ -819,6 +1020,20 @@ function renderTab(){
         h+='<button class="btn sm" data-reroll="1">🎲 Reroll offers (free)</button> ';
       }
       h+='<button class="btn d sm" data-strip="1">🧯 Strip traits · 🪙'+fmt(stripCost(tw))+'</button>';
+
+      const sc=serumCost(tw), cur=tw.mut?MUTMAP[tw.mut]:null;
+      const odds=cur ? Math.round(MUTS.filter(m=>m.rank>cur.rank).reduce((a,m)=>a+m.w,0) /
+                                  MUTS.reduce((a,m)=>a+m.w,0) * 100) : 100;
+      h+='<div class="phead" style="border-radius:9px;border:1px solid var(--line);margin:12px 0 7px">🧬 Mutation Chamber</div>'+
+         '<div class="item"><div class="ic">🧪</div><div class="info"><div class="t">Inject Serum</div>'+
+         '<div class="d">Forces a mutation roll on this tower. It can only ever improve — '+
+         (cur? 'about a <b>'+odds+'%</b> chance to beat '+cur.e+' '+cur.n+', otherwise the serum is wasted.'
+             : 'this tower is unmutated, so <b>any</b> result sticks.')+'</div></div>'+
+         '<button class="btn g" data-serum="1"'+(S.coins<sc?" disabled":"")+'>🪙'+fmt(sc)+'</button></div>'+
+         '<div class="item"><div class="ic">🧫</div><div class="info"><div class="t">Splice</div>'+
+         '<div class="d">Move a better mutation here from another tower — the donor dissolves. '+
+         'Pick the donor on the mine grid.</div></div>'+
+         '<button class="btn" data-splicebtn="1">🪙'+fmt(spliceCost(tw))+'</button></div>';
     }
     h+='<div class="d" style="border-top:1px solid var(--line);margin-top:12px;padding-top:8px"><b>All 10 traits</b></div>'+
        '<div class="gridref" style="margin-top:6px">'+
@@ -845,12 +1060,59 @@ function renderTab(){
          '<div class="t" style="color:'+(m?m.c:mat.c)+'">'+(m?m.e+" "+m.n+" ":"")+mat.n+
          ' <span style="color:var(--dim);font-weight:500">x'+fmt(q)+'</span></div>'+
          '<div class="d">🪙'+fmt(price)+' each → <span class="gold">'+fmt(price*q)+'</span></div></div>'+
+         (+p[0]<MAXTIER && q>=REFINE_RATIO
+           ? '<button class="btn sm" data-refine="'+k+'" title="Refine '+REFINE_RATIO+
+             ' into 1 of the next tier, keeping the mutation">⚗️'+Math.floor(q/REFINE_RATIO)+'</button>'
+           : '')+
          '<button class="btn sm p" data-sell="'+k+'">Sell</button></div>';
     }
+    if(keys.length)
+      h+='<div class="d" style="padding:2px 2px 8px">⚗️ Refine turns '+REFINE_RATIO+
+         ' ore into 1 of the next tier up, <b>keeping the mutation</b> — the only way to get '+
+         'high-tier ore for forging before you own a high-tier tower.</div>';
     h+='<div class="d" style="border-top:1px solid var(--line);margin-top:10px;padding-top:8px">'+
        '<b>Mutation table</b> (rarest last)</div><div class="gridref" style="margin-top:6px">'+
        MUTS.map(m=>'<div><b style="color:'+m.c+'">'+m.e+' '+m.n+'</b><br><span style="color:var(--dim)">x'+
        m.val+' value · x'+m.spd+' speed</span></div>').join("")+'</div>';
+  }
+
+  else if(S.tab==="goals"){
+    const got=S.ach.length;
+    const tot={spd:achBonus("spd"),sell:achBonus("sell"),luck:achBonus("luck")};
+    h+='<div class="item"><div class="ic">🏆</div><div class="info">'+
+       '<div class="t">Achievements — '+got+' / '+ACHS.length+'</div>'+
+       '<div class="d">Active rewards: <span class="good">+'+Math.round(tot.spd*100)+'% speed</span> · '+
+       '<span class="gold">+'+Math.round(tot.sell*100)+'% sell</span> · '+
+       '<span class="acc">+'+Math.round(tot.luck*100)+'% mutation luck</span></div></div></div>';
+    for(const a of ACHS){
+      const on=S.ach.indexOf(a.id)>=0;
+      h+='<div class="item" style="opacity:'+(on?1:0.5)+';border-color:'+(on?"#5cff9d55":"var(--line)")+'">'+
+         '<div class="ic">'+(on?a.e:"🔒")+'</div><div class="info">'+
+         '<div class="t">'+a.n+'</div><div class="d">'+a.d+'</div></div>'+
+         '<span class="tag '+(on?"good":"")+'">'+bonusText(a.b)+'</span></div>';
+    }
+    h+='<div class="phead" style="border-radius:9px;border:1px solid var(--line);margin:12px 0 7px">📊 Statistics</div>';
+    const st=[
+      ["Day reached", S.day],
+      ["Best tier owned", bestTier()?"T"+bestTier()+" "+MATS[bestTier()-1].n:"—"],
+      ["Lifetime coins", "🪙"+fmt(S.lifetime)],
+      ["Ore mined", fmt(S.stats.harvested)],
+      ["Merges", S.stats.merges],
+      ["Traits forged", S.stats.forged],
+      ["Serums injected", S.stats.serums],
+      ["Splices", S.stats.splices],
+      ["Ore refined", fmt(S.stats.refines)],
+      ["Legacy shards", S.shards],
+      ["Mutations discovered", S.seen.length+" / "+MUTS.length]
+    ];
+    h+='<div class="gridref">'+st.map(r=>'<div><span style="color:var(--dim)">'+r[0]+'</span><br><b>'+r[1]+'</b></div>').join("")+'</div>';
+    h+='<div class="d" style="margin-top:10px"><b>Mutation codex</b> — '+S.seen.length+' of '+MUTS.length+' discovered</div>'+
+       '<div class="gridref" style="margin-top:6px">'+MUTS.map(m=>{
+         const on=S.seen.indexOf(m.id)>=0;
+         return '<div style="opacity:'+(on?1:0.45)+'"><b style="color:'+(on?m.c:"var(--dim)")+'">'+
+           (on?m.e+" "+m.n:"❔ ???")+'</b><br><span style="color:var(--dim)">'+
+           (on?"x"+m.val+" value · x"+m.spd+" speed":"not yet discovered")+'</span></div>';
+       }).join("")+'</div>';
   }
 
   else if(S.tab==="log"){
@@ -887,11 +1149,19 @@ function renderTab(){
   b.querySelectorAll("[data-strip]").forEach(x=>x.onclick=()=>{ const tw=getTower(S.sel); if(tw) stripTraits(tw); renderAll(); });
   b.querySelectorAll("[data-sell]").forEach(x=>x.onclick=()=>{ const g=sellKey(x.dataset.sell); toast("💰 +🪙"+fmt(g)); dirty.tab=true; renderAll(); });
   b.querySelectorAll("[data-sellall]").forEach(x=>x.onclick=()=>{ const g=sellAll(); toast("💰 Sold everything for 🪙"+fmt(g)); dirty.tab=true; renderAll(); });
+  b.querySelectorAll("[data-refine]").forEach(x=>x.onclick=()=>{ refine(x.dataset.refine); renderAll(); });
+  b.querySelectorAll("[data-serum]").forEach(x=>x.onclick=()=>{ const tw=getTower(S.sel); if(tw) injectSerum(tw); renderAll(); });
+  b.querySelectorAll("[data-splicebtn]").forEach(x=>x.onclick=()=>{
+    const tw=getTower(S.sel); if(!tw) return;
+    S.spliceTo=(S.spliceTo===tw.id?null:tw.id); S.mergeFrom=null;
+    if(S.spliceTo) toast("🧫 Click a donor tower in your mine to move its mutation here.");
+    dirty.towers=true; dirty.detail=true; renderAll();
+  });
 }
 
 function renderAll(){
   if(dirty.towers){ renderTowers(); dirty.towers=false; }
-  if(dirty.detail){ renderDetail(); dirty.detail=false; }
+  if(dirty.detail){ renderDetail(); placeToasts(); dirty.detail=false; }
   if(dirty.tab || dirty.bag){ renderTab(); dirty.tab=false; dirty.bag=false; }
 }
 function renderHUD(){
@@ -921,15 +1191,30 @@ function help(){
   '<h3>🔀 Merging</h3><ul>'+
   '<li>Two towers of the <b>same tier</b> merge into one tower of the next tier (up to Tier '+MAXTIER+' 🌌 Voidstone).</li>'+
   '<li><b>Drag one tower onto another</b>, or select one and press 🔀 Merge.</li>'+
-  '<li>The result keeps the <b>better mutation</b> — with a 25% chance it evolves one rank higher.</li>'+
-  '<li>Up to '+MAXTRAITS+' traits are inherited from the two parents, and levels partially carry over.</li></ul>'+
+  '<li><b>The better mutation of the two always carries over.</b> A merge can never lose or downgrade a '+
+  'mutation, so it is always safe to feed a plain tower into a mutated one. On top of that there is a '+
+  '25% chance the surviving mutation <b>evolves</b> one rank higher.</li>'+
+  '<li>In merge mode each valid partner shows a green badge with exactly what you will get.</li>'+
+  '<li>Up to '+maxTraits()+' traits are inherited from the two parents, and levels partially carry over.</li></ul>'+
+  '<h3>🧬 Mutation Chamber</h3><ul>'+
+  '<li><b>Inject Serum</b> — pay to force a mutation roll on one tower. It can only improve; if the roll is '+
+  'worse than what the tower already has, the serum is wasted.</li>'+
+  '<li><b>Splice</b> — move a better mutation from a donor tower onto your target. The donor dissolves, so '+
+  'it is the way to rescue a great mutation that landed on a junk tower.</li></ul>'+
+  '<h3>⚗️ Refining</h3>'+
+  '<p>In the 🎒 Ores tab, refine '+REFINE_RATIO+' ore into 1 of the next tier up — <b>keeping the mutation</b>. '+
+  'It is deliberately lossy in coins, but it is the only way to get high-tier ore for forging before you own '+
+  'a high-tier tower.</p>'+
+  '<h3>🏆 Achievements</h3>'+
+  '<p>'+ACHS.length+' goals, each granting a small permanent bonus to speed, sell value or mutation luck. '+
+  'They survive retirement, along with your mutation codex.</p>'+
   '<h3>🧬 Mutations</h3>'+
   '<p>Every in-game day ('+DAY_LEN+' seconds) an event fires, and many of them roll mutations on your towers. '+
   'A tower only ever accepts a <b>better</b> mutation, never a worse one. Mutated towers produce mutated ore, '+
   'which is stored separately and sells at a large markup.</p>'+
   '<div class="gridref">'+MUTS.map(m=>'<div><b style="color:'+m.c+'">'+m.e+' '+m.n+'</b><br>'+
     '<span style="color:#93a0c8">x'+m.val+' value · x'+m.spd+' speed · weight '+m.w+'</span></div>').join("")+'</div>'+
-  '<h3>🔨 Forge traits ('+MAXTRAITS+' per tower)</h3>'+
+  '<h3>🔨 Forge traits ('+maxTraits()+' per tower)</h3>'+
   '<div class="gridref">'+TRAITS.map(t=>'<div><b>'+t.e+' '+t.n+'</b><br><span style="color:#93a0c8">'+t.d+'</span></div>').join("")+'</div>'+
   '<h3>📅 Events</h3>'+
   '<div class="gridref">'+EVENTS.map(e=>'<div><b>'+e.e+' '+e.n+'</b><br><span style="color:#93a0c8">'+e.d+'</span></div>').join("")+'</div>'+
@@ -937,6 +1222,7 @@ function help(){
   '<p>Once you have banked enough lifetime coins you can retire for Legacy Shards: +5% harvest speed and '+
   '+3% sell value each, permanently, across every future run.</p>'+
   '<h3>💡 Tips</h3><ul>'+
+  '<li>Never scrap a mutated tower — merge it or splice its mutation out first.</li>'+
   '<li>Merge <b>mutated</b> towers together — the better mutation survives and can evolve.</li>'+
   '<li>💰 Greedy + 💎 Refined on a high-tier tower is a huge coin engine.</li>'+
   '<li>♾️ Eternal towers buff everything else, so build one early and never scrap it.</li>'+
@@ -988,6 +1274,8 @@ $("btnHelp").onclick=help;
 $("btnSave").onclick=()=>{ save(); toast("💾 Saved."); };
 $("btnWipe").onclick=()=>{ if(confirm("Erase your save and start completely over?")){ localStorage.removeItem("mot_save"); location.reload(); } };
 $("modal").onclick=e=>{ if(e.target.id==="modal") $("modal").classList.remove("on"); };
+window.addEventListener("resize",placeToasts);
+placeToasts();
 window.addEventListener("beforeunload",save);
 
 let last=performance.now(), acc=0, saveT=0;
@@ -1001,6 +1289,7 @@ function loop(now){
   renderHUD();
   if(acc>0.45){
     acc=0;
+    checkAch();
     if(S.tab==="bag") dirty.bag=true;
     dirty.detail=true;
     renderAll();
