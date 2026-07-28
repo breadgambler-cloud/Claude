@@ -96,7 +96,7 @@ main{flex:1;display:flex;gap:12px;padding:12px;overflow:hidden}
 .tag{background:#0d142c;border:1px solid #33427a;border-radius:7px;padding:2px 6px;font-size:11px}
 
 .tabs{display:flex;gap:4px;padding:6px;background:#131b36;border-bottom:1px solid var(--line)}
-.tab{flex:1;padding:6px 4px;border-radius:9px;font-size:12px;font-weight:700;color:var(--dim);text-align:center}
+.tab{flex:1;padding:6px 2px;border-radius:9px;font-size:11px;font-weight:700;color:var(--dim);text-align:center;white-space:nowrap;overflow:hidden}
 .tab.on{background:linear-gradient(180deg,#2b3a72,#222f5c);color:#fff;box-shadow:inset 0 0 0 1px #3f52a0}
 .item{
   display:flex;gap:9px;align-items:center;background:#1a2342;border:1px solid var(--line);
@@ -127,6 +127,12 @@ main{flex:1;display:flex;gap:12px;padding:12px;overflow:hidden}
 .gridref div{background:#161f3c;border:1px solid var(--line);border-radius:9px;padding:6px 8px;font-size:11.5px}
 #eventBanner{padding:8px 12px;background:linear-gradient(90deg,#3a2b7a,#1e2951);border-bottom:1px solid #5a6ec4;font-size:12.5px;display:none;align-items:center;gap:8px;flex-wrap:wrap}
 #eventBanner.on{display:flex}
+/* the tab strip lives in the right panel, which is narrow until the viewport is
+   wide enough for it to reach its max width — below that, tabs go emoji-only */
+@media(max-width:1120px){
+  .tab .tl{display:none}
+  .tab{font-size:16px;padding:5px 2px}
+}
 @media(max-width:900px){
   body{overflow:auto}
   main{flex-direction:column;overflow:visible}
@@ -166,11 +172,12 @@ main{flex:1;display:flex;gap:12px;padding:12px;overflow:hidden}
   <div class="col" id="right">
     <div class="panel" style="flex:1">
       <div class="tabs">
-        <button class="tab on" data-tab="shop">🏪 Store</button>
-        <button class="tab" data-tab="forge">🔨 Forge</button>
-        <button class="tab" data-tab="bag">🎒 Ores</button>
-        <button class="tab" data-tab="goals">🏆 Goals</button>
-        <button class="tab" data-tab="log">📜 Log</button>
+        <button class="tab on" data-tab="shop" title="Store">🏪<span class="tl"> Store</span></button>
+        <button class="tab" data-tab="merch" title="Totem Merchant">🗿<span class="tl"> Totems</span></button>
+        <button class="tab" data-tab="forge" title="Forge">🔨<span class="tl"> Forge</span></button>
+        <button class="tab" data-tab="bag" title="Ore vault">🎒<span class="tl"> Ores</span></button>
+        <button class="tab" data-tab="goals" title="Achievements &amp; stats">🏆<span class="tl"> Goals</span></button>
+        <button class="tab" data-tab="log" title="Event log">📜<span class="tl"> Log</span></button>
       </div>
       <div class="pbody" id="tabBody"></div>
     </div>
@@ -232,7 +239,14 @@ const TRAITS = [
   {id:"prodigy",   n:"Prodigy",   e:"🌟",  d:"Upgrades cost 30% less and give +50% more power per level."},
   {id:"timeless",  n:"Timeless",  e:"⏳",  d:"Rolls twice on every event's mutation chance."},
   {id:"refined",   n:"Refined",   e:"💎",  d:"15% chance a harvest becomes the NEXT tier of ore."},
-  {id:"eternal",   n:"Eternal",   e:"♾️",  d:"+8% harvest speed to every other tower."}
+  {id:"eternal",   n:"Eternal",   e:"♾️",  d:"+8% harvest speed to every other tower."},
+  /* x:true — merchant-exclusive. The forge never offers these. */
+  {id:"stoneheart",n:"Stoneheart",e:"🗿",  x:true, d:"Levels are twice as powerful on this totem."},
+  {id:"warded",    n:"Warded",    e:"🪬",  x:true, d:"+100% mutation chance on this totem."},
+  {id:"hoarder",   n:"Hoarder",   e:"🐲",  x:true, d:"+2% sell value on ALL your ore per tier of this totem."},
+  {id:"allseeing", n:"All-Seeing",e:"👁️",  x:true, d:"Rolls THREE times on every event's mutation chance."},
+  {id:"radiant",   n:"Radiant",   e:"☀️",  x:true, d:"+12% harvest speed to every other totem."},
+  {id:"entropic",  n:"Entropic",  e:"⛓️",  x:true, d:"+120% harvest speed, but this totem can never be merged."}
 ];
 const TRAITMAP = {}; TRAITS.forEach(t=>TRAITMAP[t.id]=t);
 const BASE_TRAITS = 3;
@@ -255,7 +269,9 @@ const ACHS=[
   {id:"fusion", e:"🔀", n:"Fusionist",      d:"Complete 25 merges.",                      b:{k:"spd", v:0.06}, c:()=>S.stats.merges>=25},
   {id:"vet",    e:"📅", n:"Veteran",        d:"Survive to day 50.",                       b:{k:"sell",v:0.06}, c:()=>S.day>=50},
   {id:"reborn", e:"🔷", n:"Reborn",         d:"Retire at least once.",                    b:{k:"spd", v:0.10}, c:()=>S.shards>0},
-  {id:"coll",   e:"🧪", n:"Collector",      d:"Discover 10 different mutations.",         b:{k:"luck",v:0.10}, c:()=>S.seen.length>=10}
+  {id:"coll",   e:"🧪", n:"Collector",      d:"Discover 10 different mutations.",         b:{k:"luck",v:0.10}, c:()=>S.seen.length>=10},
+  {id:"idol",   e:"🗿", n:"Idol Collector", d:"Buy a rare totem from the Totem Merchant.",b:{k:"luck",v:0.08}, c:()=>S.stats.rares>=1},
+  {id:"nullb",  e:"🕳️", n:"Null Bearer",    d:"Own the legendary Null Totem.",            b:{k:"spd", v:0.12}, c:()=>S.towers.some(t=>has(t,"entropic"))}
 ];
 const ACHMAP={}; ACHS.forEach(a=>ACHMAP[a.id]=a);
 const BONUSNAME={spd:"harvest speed", sell:"sell value", luck:"mutation luck"};
@@ -280,6 +296,46 @@ function checkAch(){
   }
 }
 
+/* ---- Totem Merchant: stock rotates every day. Rarities 0 common / 1 rare /
+   2 legendary. Anything with traits carries merchant-exclusive ones. ---- */
+const MERCH=[
+  {id:"sap",   e:"🌱", n:"Sapling Totem",   r:0, w:26, tier:1, price:40,      stock:3, count:1,
+   d:"An ordinary Tier 1 wood totem, no frills."},
+  {id:"pair",  e:"👯", n:"Twin Totems",     r:0, w:20, tier:2, price:900,     stock:1, count:2,
+   d:"TWO identical Tier 2 totems — a merge waiting to happen."},
+  {id:"quarry",e:"🪨", n:"Quarry Totem",    r:0, w:18, tier:3, price:3200,    stock:2, count:1,
+   d:"A dependable Tier 3 stonecutter."},
+  {id:"forge", e:"⚙️", n:"Foundry Totem",   r:0, w:14, tier:4, price:16000,   stock:2, count:1,
+   d:"A Tier 4 iron totem straight off the foundry floor."},
+  {id:"lucky", e:"🍀", n:"Lucky Totem",     r:0, w:10, tier:3, price:22000,   stock:1, count:1, mut:"lucky",
+   d:"A Tier 3 totem that arrives already Lucky."},
+
+  {id:"ward",  e:"🪬", n:"Warding Totem",   r:1, w:7,  tier:3, price:60000,   stock:1, count:1, mut:"lucky",  traits:["warded"],
+   d:"Hung with charms. Mutations cling to it far more readily."},
+  {id:"moai",  e:"🗿", n:"Moai Totem",      r:1, w:6,  tier:4, price:120000,  stock:1, count:1, mut:"cryst",  traits:["stoneheart"],
+   d:"Carved from one crystal block — it grows twice as fast with every level."},
+  {id:"eye",   e:"🧿", n:"Evil Eye Totem",  r:1, w:5,  tier:4, price:180000,  stock:1, count:1, mut:"blood",  traits:["warded","greedy"],
+   d:"It watches the ore, and the ore bleeds."},
+  {id:"watch", e:"👁️", n:"Watcher Totem",   r:1, w:3.5,tier:5, price:900000,  stock:1, count:1, mut:"void",   traits:["allseeing"],
+   d:"Never blinks. Every event rolls on it three times."},
+  {id:"sun",   e:"☀️", n:"Sun Totem",       r:1, w:2.2,tier:6, price:4500000, stock:1, count:1, mut:"stellar",traits:["radiant"],
+   d:"Bathes the whole mine in light — every other totem works faster."},
+  {id:"moon",  e:"🌙", n:"Moon Totem",      r:1, w:2.2,tier:6, price:4500000, stock:1, count:1, mut:"frozen", traits:["hoarder"],
+   d:"Ore cut under its light fetches a better price everywhere."},
+
+  {id:"dragon",e:"🐉", n:"Dragon Totem",    r:2, w:0.9,tier:7, price:26000000,  stock:1, count:1, mut:"blood", traits:["hoarder","greedy"],
+   d:"A wyrm coiled in mythril. It hoards, and it skims."},
+  {id:"null",  e:"🕳️", n:"Null Totem",      r:2, w:0.35,tier:8,price:320000000,stock:1, count:1, mut:"singu", traits:["entropic","allseeing"],
+   d:"A hole shaped like a totem. Ferociously fast — and it can never be merged."}
+];
+const MERCHMAP={}; MERCH.forEach(m=>MERCHMAP[m.id]=m);
+const RARITY=[
+  {n:"Common",    c:"#93a0c8"},
+  {n:"Rare",      c:"#31d8ff"},
+  {n:"Legendary", c:"#ffd35c"}
+];
+const MERCH_SLOTS = 4;
+
 const DAY_LEN = 90;      // seconds per in-game day
 const START_SLOTS = 6;
 const MAX_SLOTS = 24;
@@ -295,7 +351,8 @@ function newState(shards){
     slots:START_SLOTS, inv:{}, bought:0,
     up:{tools:0, guild:0, charm:0, plot:0, auto:0, matrix:0, automerge:0},
     autoSell:false, autoMerge:false,
-    ach:[], seen:[], stats:{merges:0, forged:0, harvested:0, crates:0, serums:0, splices:0, refines:0},
+    ach:[], seen:[], merch:null, restocks:0,
+    stats:{merges:0, forged:0, harvested:0, crates:0, serums:0, splices:0, refines:0, totems:0, rares:0},
     buff:{spd:1, sell:1, mut:0, shop:1, name:"", e:""},
     log:[], t:Date.now(), tab:"shop", sel:null, mergeFrom:null, spliceTo:null, offer:null
   };
@@ -308,7 +365,8 @@ function load(){
     S=Object.assign(newState(),d);
     S.buff=Object.assign({spd:1,sell:1,mut:0,shop:1,name:"",e:""},d.buff||{});
     S.up=Object.assign({tools:0,guild:0,charm:0,plot:0,auto:0,matrix:0,automerge:0},d.up||{});
-    S.stats=Object.assign({merges:0,forged:0,harvested:0,crates:0,serums:0,splices:0,refines:0},d.stats||{});
+    S.stats=Object.assign({merges:0,forged:0,harvested:0,crates:0,serums:0,splices:0,refines:0,totems:0,rares:0},d.stats||{});
+    if(!S.merch || !Array.isArray(S.merch.items)) S.merch=null;
     S.ach=Array.isArray(d.ach)?d.ach:[];
     S.seen=Array.isArray(d.seen)?d.seen:[];
     S.towers.forEach(t=>{ t.traits=t.traits||[]; t.p=t.p||0; t.cd=0; });
@@ -358,20 +416,29 @@ function getTower(id){ return S.towers.find(t=>t.id===id)||null; }
    ECONOMY / STATS
    ============================================================ */
 function globalSpeed(){ return (1+0.12*S.up.tools) * (1+0.05*S.shards) * (1+achBonus("spd")) * S.buff.spd; }
-function sellMult(){ return (1+0.15*S.up.guild) * (1+0.03*S.shards) * (1+achBonus("sell")) * S.buff.sell; }
+function hoardBonus(){   // 🐲 Hoarder: +2% sell value per tier of each hoarder totem
+  let v=0;
+  for(const t of S.towers) if(has(t,"hoarder")) v+=0.02*t.tier;
+  return v;
+}
+function sellMult(){ return (1+0.15*S.up.guild) * (1+0.03*S.shards) * (1+achBonus("sell")) * (1+hoardBonus()) * S.buff.sell; }
 function unitPrice(tier,mutId){
   const m = mutId?MUTMAP[mutId]:null;
   return MATS[tier-1].v * (m?m.val:1) * sellMult();
 }
 function towerStats(tw){
   const m = tw.mut?MUTMAP[tw.mut]:null;
-  const lvlPow = has(tw,"prodigy")?0.21:0.14;
+  let lvlPow = has(tw,"prodigy")?0.21:0.14;
+  if(has(tw,"stoneheart")) lvlPow*=2;
   let spd = 1 + lvlPow*(tw.lvl-1);
   if(has(tw,"swift")) spd*=1.4;
+  if(has(tw,"entropic")) spd*=2.2;
   if(m) spd*=m.spd;
   if(has(tw,"symbiotic")) spd*=1+0.06*Math.max(0,countTrait("symbiotic")-1);
   const eternals = countTrait("eternal") - (has(tw,"eternal")?1:0);
   if(eternals>0) spd*=Math.pow(1.08,eternals);
+  const radiants = countTrait("radiant") - (has(tw,"radiant")?1:0);
+  if(radiants>0) spd*=Math.pow(1.12,radiants);
   spd*=globalSpeed();
   const interval = 3.0 + (tw.tier-1)*0.45;
   const amt = 1 + (has(tw,"fertile")?1:0);
@@ -457,12 +524,13 @@ function tick(dt){
 function luckOf(tw){
   let l = 1 + 0.08*S.up.charm + achBonus("luck") + S.buff.mut;
   if(has(tw,"fortunate")) l*=1.6;
+  if(has(tw,"warded")) l*=2;
   const m=tw.mut?MUTMAP[tw.mut]:null;
   if(m && m.luck) l*=m.luck;
   return l;
 }
 function rollMutation(tw,chance,filter,rareBias){
-  const rolls = has(tw,"timeless")?2:1;
+  const rolls = has(tw,"allseeing")?3:(has(tw,"timeless")?2:1);
   let got=null;
   for(let i=0;i<rolls;i++){
     if(Math.random() > chance*luckOf(tw)) continue;
@@ -511,15 +579,17 @@ const EVENTS=[
   {e:"💰",n:"Market Boom",w:12,d:"Traders are desperate — ore sells for x2.4 today.",
    run(){ S.buff.sell=2.4; return "Sell value x2.4 for the day."; }},
 
-  {e:"🎁",n:"Traveling Merchant",w:10,d:"A caravan arrives: a free tower plus 30% off the store today.",
+  {e:"🎁",n:"Traveling Merchant",w:10,d:"The caravan rolls in: 30% off everything, and the Totem Merchant lays out a rare-heavy stock.",
    run(){ S.buff.shop=0.7;
+     const rare=restock(true);
+     let msg="30% off, and the merchant's stock is unusually good"+(rare?" — something rare is on the table.":".");
      if(S.towers.length<S.slots){
        const avg=S.towers.length?Math.round(S.towers.reduce((a,t)=>a+t.tier,0)/S.towers.length):1;
        const t=Math.max(1,Math.min(MAXTIER-1,avg));
        addTower(t); dirty.towers=true;
-       return "Gifted a Tier "+t+" "+MATS[t-1].n+" tower, and 30% off the store.";
+       msg="Gifted a Tier "+t+" "+MATS[t-1].n+" totem. "+msg;
      }
-     return "No free slot for the gift — but the store is 30% off."; }},
+     return msg; }},
 
   {e:"🌪️",n:"Void Rift",w:4,d:"Reality tears open: 14% chance of a RARE-ONLY mutation on each tower.",
    run(){ const h=mutateSweep(0.14,m=>m.rank>=RARE_RANK,true);
@@ -549,7 +619,7 @@ const EVENTS=[
    run(){ const cands=S.towers.filter(t=>t.traits.length<maxTraits());
      if(!cands.length) return "Every tower was already full of traits.";
      const tw=pick(cands);
-     const av=TRAITS.filter(t=>!has(tw,t.id));
+     const av=TRAITS.filter(t=>!t.x && !has(tw,t.id));
      if(!av.length) return "No trait was available.";
      const t=pick(av); tw.traits.push(t.id); dirty.towers=true;
      return "A Tier "+tw.tier+" "+MATS[tw.tier-1].n+" tower gained "+t.e+" "+t.n+"."; }},
@@ -571,6 +641,7 @@ const EVENTS=[
 function newDay(){
   S.day++;
   S.buff={spd:1,sell:1,mut:0,shop:1,name:"",e:""};
+  restock(false);
   const ev=wpick(EVENTS,e=>e.w);
   const res=ev.run();
   S.buff.name=ev.n; S.buff.e=ev.e;
@@ -613,7 +684,11 @@ function upgrade(tw){
   dirty.towers=true; dirty.detail=true;
   toast("⬆️ "+MATS[tw.tier-1].e+" tower is now Lv."+tw.lvl);
 }
-function canMerge(a,b){ return !!a && !!b && a.id!==b.id && a.tier===b.tier && a.tier<MAXTIER; }
+function canMerge(a,b){
+  if(!a || !b || a.id===b.id || a.tier!==b.tier || a.tier>=MAXTIER) return false;
+  if(has(a,"entropic") || has(b,"entropic")) return false;   // ⛓️ Entropic totems never merge
+  return true;
+}
 /* The better of the two mutations ALWAYS carries over — a merge can never
    downgrade or lose a mutation. 25% of the time it also evolves one rank. */
 function bestMutOf(a,b){
@@ -666,7 +741,7 @@ function forgeCost(tw){
 }
 function stripCost(tw){ return Math.floor(1500*Math.pow(1.85,tw.tier-1)); }
 function makeOffer(tw){
-  const av=TRAITS.filter(t=>!has(tw,t.id));
+  const av=TRAITS.filter(t=>!t.x && !has(tw,t.id));   // exclusives are merchant-only
   S.offer={ id:tw.id, list:av.sort(()=>Math.random()-0.5).slice(0,3).map(t=>t.id) };
 }
 function applyTrait(tw,tid){
@@ -795,6 +870,56 @@ const UPGRADES=[
   {e:"🔁",n:"Auto-Merger",   d:()=>"Automatically merges plain towers — never touches mutated or forged ones.",
    cost:()=>150000, max:()=>S.up.automerge>=1, buy(){ S.up.automerge=1; S.autoMerge=true; }}
 ];
+/* ---------- totem merchant ---------- */
+function merchPrice(m){ return Math.floor(m.price*S.buff.shop); }
+function restock(bias){
+  // the merchant only carries what you are close to being ready for
+  const ceiling=Math.max(3,bestTier()+2);
+  const pool=MERCH.filter(m=>m.tier<=ceiling);
+  const items=[], used={};
+  for(let i=0;i<MERCH_SLOTS;i++){
+    const avail=pool.filter(m=>!used[m.id]);
+    if(!avail.length) break;
+    const m=wpick(avail, x=> bias?Math.pow(x.w,0.35):x.w );
+    used[m.id]=1;
+    items.push({id:m.id, stock:m.stock});
+  }
+  S.merch={day:S.day, items:items};
+  dirty.tab=true;
+  return items.some(it=>MERCHMAP[it.id].r>0);
+}
+function restockCost(){ return Math.floor(1200*Math.pow(1.35,S.restocks)*(1+bestTier()*0.6)); }
+function payRestock(){
+  const c=restockCost();
+  if(S.coins<c){ toast("❌ Need 🪙"+fmt(c)); return; }
+  S.coins-=c; S.restocks++;
+  const rare=restock(false);
+  toast(rare?"🗿 New stock — and something rare caught your eye.":"🗿 The merchant lays out fresh stock.");
+}
+function buyMerch(idx){
+  const it=S.merch && S.merch.items[idx];
+  if(!it || it.stock<=0) return;
+  const m=MERCHMAP[it.id];
+  if(S.towers.length+m.count > S.slots){
+    toast(m.count>1?"❌ Needs "+m.count+" free slots.":"❌ No free slot — expand your plot!");
+    return;
+  }
+  const p=merchPrice(m);
+  if(S.coins<p){ toast("❌ Need 🪙"+fmt(p)); return; }
+  S.coins-=p; it.stock--;
+  for(let i=0;i<m.count;i++){
+    const tw=addTower(m.tier, m.mut||null, m.traits?m.traits.slice():[]);
+    if(tw.mut) discover(tw.mut);
+  }
+  S.stats.totems+=m.count;
+  if(m.r>0) S.stats.rares++;
+  dirty.towers=true; dirty.tab=true;
+  toast(m.e+" Bought <b>"+m.n+"</b>"+(m.count>1?" x"+m.count:"")+
+        (m.mut?" — "+MUTMAP[m.mut].e+" "+MUTMAP[m.mut].n:""));
+  if(m.r>0) logE(m.e,"Totem Merchant","Acquired the "+RARITY[m.r].n.toLowerCase()+" "+m.n+
+    (m.traits?" ("+m.traits.map(t=>TRAITMAP[t].e+" "+TRAITMAP[t].n).join(", ")+")":"")+".");
+}
+
 function shardsFor(){ return Math.floor(3*Math.sqrt(S.lifetime/5e6)); }
 function prestige(){
   const g=shardsFor();
@@ -992,6 +1117,40 @@ function renderTab(){
        '<button class="btn g" data-prestige="1"'+(g<1?" disabled":"")+'>Retire</button></div>';
   }
 
+  else if(S.tab==="merch"){
+    if(!S.merch) restock(false);
+    const rc=restockCost();
+    h+='<div class="item" style="border-color:#7c6bff"><div class="ic">🗿</div><div class="info">'+
+       '<div class="t">The Totem Merchant</div>'+
+       '<div class="d">Carves totems you will never find in the store. Stock rotates every day, and '+
+       'anything <b>Rare</b> or <b>Legendary</b> carries traits the forge cannot make.</div></div>'+
+       '<button class="btn g" data-restock="1"'+(S.coins<rc?" disabled":"")+'>🔄 🪙'+fmt(rc)+'</button></div>';
+    for(let i=0;i<S.merch.items.length;i++){
+      const it=S.merch.items[i], m=MERCHMAP[it.id];
+      if(!m) continue;
+      const rar=RARITY[m.r], p=merchPrice(m), out=it.stock<=0;
+      const need=S.towers.length+m.count>S.slots;
+      h+='<div class="item" style="opacity:'+(out?0.45:1)+';border-color:'+(m.r?rar.c+"66":"var(--line)")+'">'+
+         '<div class="ic" style="font-size:26px">'+m.e+'</div><div class="info">'+
+         '<div class="t">'+m.n+(m.count>1?' <span style="color:var(--dim)">x'+m.count+'</span>':'')+
+           ' <span class="tag" style="color:'+rar.c+'">'+rar.n+'</span></div>'+
+         '<div class="d">'+m.d+'</div>'+
+         '<div class="d" style="margin-top:3px">Tier '+m.tier+' '+MATS[m.tier-1].e+' '+MATS[m.tier-1].n+
+           (m.mut?' · <span style="color:'+MUTMAP[m.mut].c+'">'+MUTMAP[m.mut].e+' '+MUTMAP[m.mut].n+'</span>':'')+
+           (m.traits?' · '+m.traits.map(t=>TRAITMAP[t].e+' '+TRAITMAP[t].n).join(' · '):'')+
+           ' · stock '+it.stock+'</div></div>'+
+         '<button class="btn'+(m.r?" g":"")+'" data-merch="'+i+'"'+
+           ((out||need||S.coins<p)?" disabled":"")+'>'+(out?"SOLD":"🪙"+fmt(p))+'</button></div>';
+    }
+    h+='<div class="d" style="padding:4px 2px">Stock refreshes at the start of each day — or pay to have '+
+       'the merchant lay out a new set now. 🎁 Traveling Merchant days bring a rare-heavy stock at 30% off.</div>';
+    h+='<div class="d" style="border-top:1px solid var(--line);margin-top:10px;padding-top:8px">'+
+       '<b>Merchant-exclusive traits</b> — the forge never offers these</div>'+
+       '<div class="gridref" style="margin-top:6px">'+
+       TRAITS.filter(t=>t.x).map(t=>'<div><b>'+t.e+' '+t.n+'</b><br><span style="color:var(--dim)">'+t.d+'</span></div>').join("")+
+       '</div>';
+  }
+
   else if(S.tab==="forge"){
     const tw=getTower(S.sel);
     if(!tw){
@@ -1102,6 +1261,8 @@ function renderTab(){
       ["Serums injected", S.stats.serums],
       ["Splices", S.stats.splices],
       ["Ore refined", fmt(S.stats.refines)],
+      ["Totems bought", S.stats.totems],
+      ["Rare totems", S.stats.rares],
       ["Legacy shards", S.shards],
       ["Mutations discovered", S.seen.length+" / "+MUTS.length]
     ];
@@ -1150,6 +1311,8 @@ function renderTab(){
   b.querySelectorAll("[data-sell]").forEach(x=>x.onclick=()=>{ const g=sellKey(x.dataset.sell); toast("💰 +🪙"+fmt(g)); dirty.tab=true; renderAll(); });
   b.querySelectorAll("[data-sellall]").forEach(x=>x.onclick=()=>{ const g=sellAll(); toast("💰 Sold everything for 🪙"+fmt(g)); dirty.tab=true; renderAll(); });
   b.querySelectorAll("[data-refine]").forEach(x=>x.onclick=()=>{ refine(x.dataset.refine); renderAll(); });
+  b.querySelectorAll("[data-merch]").forEach(x=>x.onclick=()=>{ buyMerch(+x.dataset.merch); renderAll(); });
+  b.querySelectorAll("[data-restock]").forEach(x=>x.onclick=()=>{ payRestock(); renderAll(); });
   b.querySelectorAll("[data-serum]").forEach(x=>x.onclick=()=>{ const tw=getTower(S.sel); if(tw) injectSerum(tw); renderAll(); });
   b.querySelectorAll("[data-splicebtn]").forEach(x=>x.onclick=()=>{
     const tw=getTower(S.sel); if(!tw) return;
@@ -1201,6 +1364,13 @@ function help(){
   'worse than what the tower already has, the serum is wasted.</li>'+
   '<li><b>Splice</b> — move a better mutation from a donor tower onto your target. The donor dissolves, so '+
   'it is the way to rescue a great mutation that landed on a junk tower.</li></ul>'+
+  '<h3>🗿 The Totem Merchant</h3>'+
+  '<p>A separate trader from the store, with stock that rotates <b>every day</b>. Alongside plain totems '+
+  'and twin packs, they carve <b>Rare</b> and <b>Legendary</b> totems that arrive pre-mutated and carrying '+
+  '<b>merchant-exclusive traits the forge can never offer</b>. They only show you what your mine is nearly '+
+  'ready for, so better totems appear as you climb the tiers. Pay to force a fresh stock, and watch for '+
+  '🎁 Traveling Merchant days — rare-heavy stock at 30% off.</p>'+
+  '<div class="gridref">'+TRAITS.filter(t=>t.x).map(t=>'<div><b>'+t.e+' '+t.n+'</b><br><span style="color:#93a0c8">'+t.d+'</span></div>').join("")+'</div>'+
   '<h3>⚗️ Refining</h3>'+
   '<p>In the 🎒 Ores tab, refine '+REFINE_RATIO+' ore into 1 of the next tier up — <b>keeping the mutation</b>. '+
   'It is deliberately lossy in coins, but it is the only way to get high-tier ore for forging before you own '+
@@ -1223,6 +1393,8 @@ function help(){
   '+3% sell value each, permanently, across every future run.</p>'+
   '<h3>💡 Tips</h3><ul>'+
   '<li>Never scrap a mutated tower — merge it or splice its mutation out first.</li>'+
+  '<li>Merchant traits spread: merge an exclusive totem into another and the trait can carry over — '+
+  'except ⛓️ Entropic totems, which cannot be merged at all.</li>'+
   '<li>Merge <b>mutated</b> towers together — the better mutation survives and can evolve.</li>'+
   '<li>💰 Greedy + 💎 Refined on a high-tier tower is a huge coin engine.</li>'+
   '<li>♾️ Eternal towers buff everything else, so build one early and never scrap it.</li>'+

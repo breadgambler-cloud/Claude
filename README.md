@@ -34,7 +34,13 @@ dependencies, no network. Progress auto-saves to `localStorage`.
   ♾️ Eternal. Forging costs coins plus raw ore of the tower's own tier.
 - **Refining** — turn 6 ore into 1 of the next tier up, *keeping the mutation*. Lossy in
   coins, but the only way to get high-tier ore for forging before you own a high-tier tower.
-- **16 achievements** — each grants a small permanent bonus to speed, sell value or
+- **Totem Merchant** — a trader separate from the store, whose stock rotates every day.
+  Alongside plain totems and twin packs, they carve **Rare** and **Legendary** totems that
+  arrive pre-mutated and carry six **merchant-exclusive traits the forge never offers**:
+  🗿 Stoneheart, 🪬 Warded, 🐲 Hoarder, 👁️ All-Seeing, ☀️ Radiant, ⛓️ Entropic (huge speed,
+  but that totem can never be merged). Stock is gated to roughly your current tier, can be
+  refreshed for coins, and 🎁 Traveling Merchant days bring rare-heavy stock at 30% off.
+- **18 achievements** — each grants a small permanent bonus to speed, sell value or
   mutation luck, plus a mutation codex tracking which of the 15 you've discovered. Both
   survive retirement.
 - **Store** — sapling towers, four crate tiers, and permanent upgrades (plot expansion,
