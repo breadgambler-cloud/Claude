@@ -21,6 +21,10 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | Tank Ball | 200 | 5 |
 | Spike Ball | 100 | 4, spikes 4 (medium) or 7 (big) |
 | Vampire Ball | 100 | 0, bites drain 8 HP per second |
+| Bomb Ball | 100 | 3, blast 14 |
+| Ghost Ball | 100 | 9 |
+| Lightning Ball | 100 | 4, zap 6 |
+| Ice Ball | 100 | 7 |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
 When two axes meet they clang off each other and both reverse direction.
@@ -47,3 +51,12 @@ take damage. Each Spike Ball can have 10 spikes at a time.
 The Vampire Ball turns to face the enemy. If its fangs touch the enemy, it latches on for 2 seconds, draining 4 HP every
 half second and healing itself by the same amount. Biting is the only way it does damage. After a bite it needs
 1.5 seconds before it can bite again.
+
+The Bomb Ball's fuse burns down every 4 seconds and it explodes, dealing 14 damage and knockback to any enemy in the blast.
+
+The Ghost Ball is solid for 3 seconds, then fades for 1.5 seconds. While faded it passes through everything and can't be
+hurt by anything: hits, axes, spikes, webs, bites, blasts or lightning.
+
+The Lightning Ball strikes the enemy with lightning every 3 seconds for 6 damage, wherever they are in the arena.
+
+The Ice Ball's hits chill the enemy, who moves at half speed for 2 seconds.

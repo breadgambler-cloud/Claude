@@ -207,6 +207,58 @@
         biteArc: 0.9,      // how far off-center (radians) the fangs can still bite
       },
     },
+    bomb: {
+      name: 'BOMB BALL',
+      short: 'BOMB',
+      hp: 100,
+      damage: 3,
+      mass: 1,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#5a6070', base: '#2b2f3a', dark: '#181b22', rim: '#07080b' },
+      cap: true,     // metal fuse cap on top
+      // Its fuse burns down and it blows up, hurting anything in the blast.
+      bomb: { every: 4, radius: 44, damage: 14, knock: 200 },
+    },
+    ghost: {
+      name: 'GHOST BALL',
+      short: 'GHOST',
+      hp: 100,
+      damage: 9,
+      mass: 1,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#ffffff', base: '#e6e0f5', dark: '#b9b0d6', rim: '#6d6488' },
+      face: true,    // spooky eyes and mouth
+      // It keeps fading out. While faded it passes through everything and can't be hurt.
+      ghost: { solid: 3, faded: 1.5 },
+    },
+    zap: {
+      name: 'LIGHTNING BALL',
+      short: 'ZAP',
+      hp: 100,
+      damage: 4,
+      mass: 1,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#6f8ff5', base: '#2a3f9e', dark: '#1a2766', rim: '#0a1033' },
+      bolt: true,    // lightning bolt mark
+      // Every few seconds it strikes the enemy with lightning, wherever they are.
+      zap: { every: 3, damage: 6 },
+    },
+    ice: {
+      name: 'ICE BALL',
+      short: 'ICE',
+      hp: 100,
+      damage: 7,
+      mass: 1,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#f2fdff', base: '#9fe3f5', dark: '#5fb3d6', rim: '#2a6f8f' },
+      flake: true,   // snowflake mark
+      // Its hits chill the enemy: they move at half speed for a while.
+      freeze: { time: 2, slow: 0.5 },
+    },
   };
   const BALL_ORDER = Object.keys(BALL_TYPES);
 
@@ -366,6 +418,42 @@
         g.fillStyle = Math.abs(dy) < r - 3 ? '#ffd27a' : '#ff8a3d'; g.fillRect(cx, py, 1, 1);
       }
     }
+    if (type.cap) {
+      g.fillStyle = '#07080b'; g.fillRect(r - 3, 0, 7, 4);
+      g.fillStyle = '#8b929c'; g.fillRect(r - 2, 1, 5, 2);
+      g.fillStyle = '#e4e8ee'; g.fillRect(r - 2, 1, 2, 1);
+    }
+    if (type.face) {
+      g.fillStyle = '#2a2440';
+      g.fillRect(r - 6, r - 8, 3, 4); g.fillRect(r + 4, r - 8, 3, 4);     // eyes
+      g.fillRect(r - 1, r + 5, 3, 4);                                     // "oooo" mouth
+      g.fillStyle = '#ffffff'; g.fillRect(r - 6, r - 8, 1, 1); g.fillRect(r + 4, r - 8, 1, 1);
+    }
+    if (type.bolt) {
+      // a lightning bolt from top-right to bottom-left
+      const pts = [[4, -10], [-3, -1], [2, -1], [-4, 10]];
+      g.fillStyle = '#ffe14d';
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [x0, y0] = pts[i], [x1, y1] = pts[i + 1];
+        const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+        for (let k = 0; k <= n; k++) {
+          const x = Math.round(r + x0 + (x1 - x0) * k / n), y = Math.round(r + y0 + (y1 - y0) * k / n);
+          g.fillRect(x - 1, y, 2, 1);
+        }
+      }
+    }
+    if (type.flake) {
+      // six-armed snowflake
+      g.fillStyle = '#ffffff';
+      for (let k = 0; k < 6; k++) {
+        const a = k * Math.PI / 3 + Math.PI / 6;
+        for (let d2 = 3; d2 <= 10; d2++) g.fillRect(Math.round(r + Math.cos(a) * d2), Math.round(r + Math.sin(a) * d2), 1, 1);
+        const bx = r + Math.cos(a) * 7, by = r + Math.sin(a) * 7;
+        for (const off of [-0.9, 0.9]) {
+          g.fillRect(Math.round(bx + Math.cos(a + off) * 2), Math.round(by + Math.sin(a + off) * 2), 1, 1);
+        }
+      }
+    }
     if (type.armor) {
       const inBall = (px, py) => (px - r) ** 2 + (py - r) ** 2 <= (r - 1.2) ** 2;
       // treads across the bottom
@@ -493,6 +581,7 @@
   let balls, popups, particles, state, winner, shake, aim, roundTimer, firstHitDone, webs;
   let executeFx = [];
   let spikes = [];
+  let effects = [];   // explosions and lightning bolts
   const picks = ['normal', 'normal'];   // ball type for YOU and CPU
   let hoverCard = -1;
 
@@ -518,6 +607,11 @@
       spikeCd: 0,
       // vampire
       face: side === 0 ? 0 : Math.PI, latch: null, latchCd: 0,
+      // bomb / ghost / lightning / ice
+      fuse: t.bomb ? t.bomb.every : 0,
+      phased: false, phaseT: t.ghost ? t.ghost.solid : 0,
+      zapT: t.zap ? t.zap.every : 0,
+      chill: 0,
     };
     if (t.rng) rollRng(ball);   // the first roll starts at launch
     return ball;
@@ -570,6 +664,7 @@
     webs = [];
     executeFx = [];
     spikes = [];
+    effects = [];
     state = 'aim';      // select -> aim -> fight -> over
     winner = null;
     shake = 0;
@@ -638,7 +733,7 @@
   // Combat
   // ---------------------------------------------------------------------------
   function hurt(ball, amount, attacker, color = '#ff6b6b') {
-    if (!ball.alive) return 0;
+    if (!ball.alive || ball.phased) return 0;   // a faded ghost can't be touched
     if (attacker.type.rng) color = amount >= 20 ? '#ffd23f' : '#ff6b6b';
     if (ball.shielded) {
       amount = Math.max(1, Math.round(amount * (1 - ball.type.shield.reduction)));
@@ -693,7 +788,11 @@
 
   function strike(attacker, victim) {
     const amount = dealt(attacker);
-    if (amount > 0) hurt(victim, amount, attacker);
+    if (amount > 0 && hurt(victim, amount, attacker) > 0 && attacker.type.freeze && victim.alive) {
+      if (victim.chill <= 0) popups.push({ x: victim.x, y: victim.y - victim.r - 12, text: 'CHILLED', t: -0.1, color: '#9fe3f5' });
+      victim.chill = attacker.type.freeze.time;
+      burst(victim.x, victim.y, { light: '#ffffff', base: '#9fe3f5', dark: '#5fb3d6' }, 8);
+    }
     else if (attacker.type.rng) {
       // still rolling: the bump does nothing (one label at a time per ball)
       if (!popups.some(p => p.noDmg === victim && p.t < 0.6)) {
@@ -940,7 +1039,7 @@
 
   // Enemies bounce off spikes and take damage.
   function spikeCollisions(b) {
-    if (!b.alive || b.stuck > 0 || b.latch) return;
+    if (!b.alive || b.stuck > 0 || b.latch || b.phased) return;
     for (const sp of spikes) {
       if (sp.owner.side === b.side) continue;
       let nx, ny, push;
@@ -983,7 +1082,7 @@
   // Bite if the fangs are facing the enemy. Returns true if it latched on.
   function tryLatch(v, foe) {
     const cfg = v.type.vampire;
-    if (!cfg || v.latch || v.latchCd > 0 || v.stuck > 0 || !foe.alive || foe.latch) return false;
+    if (!cfg || v.latch || v.latchCd > 0 || v.stuck > 0 || !foe.alive || foe.latch || foe.phased) return false;
     const toFoe = Math.atan2(foe.y - v.y, foe.x - v.x);
     if (Math.abs(angleDiff(v.face, toFoe)) > cfg.biteArc) return false;
     v.latch = { target: foe, t: cfg.latchTime, tick: 0.15, ang: Math.atan2(v.y - foe.y, v.x - foe.x) };
@@ -1005,7 +1104,7 @@
     if (!cfg || !v.alive) return;
     const foe = balls[1 - v.side];
     if (v.latch) {
-      if (!foe.alive) { detach(v); return; }
+      if (!foe.alive || foe.phased) { detach(v); return; }
       const L = v.latch;
       L.t -= dt; L.tick -= dt;
       // ride along on the victim, fangs in
@@ -1041,6 +1140,62 @@
       const d = angleDiff(v.face, want);
       v.face += Math.sign(d) * Math.min(Math.abs(d), cfg.turnRate * dt);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Bomb, Ghost, Lightning
+  // ---------------------------------------------------------------------------
+  function updateBomb(b, dt) {
+    const cfg = b.type.bomb;
+    if (!cfg || !b.alive) return;
+    b.fuse -= dt;
+    if (b.fuse > 0) return;
+    b.fuse = cfg.every;
+    effects.push({ kind: 'boom', x: b.x, y: b.y, r: cfg.radius, t: 0, life: 0.45 });
+    shake = Math.max(shake, 0.3);
+    burst(b.x, b.y, { light: '#fff3b0', base: '#ffb03b', dark: '#ff5a1f' }, 24);
+    for (const foe of balls) {
+      if (foe === b || !foe.alive || foe.side === b.side) continue;
+      const dx = foe.x - b.x, dy = foe.y - b.y, d = Math.hypot(dx, dy) || 1;
+      if (d > cfg.radius + foe.r) continue;
+      if (hurt(foe, cfg.damage, b, '#ffb03b') > 0 && foe.stuck <= 0 && !foe.latch) {
+        foe.vx += dx / d * cfg.knock; foe.vy += dy / d * cfg.knock;
+        clampSpeed(foe);
+      }
+    }
+  }
+
+  function updateGhost(b, dt) {
+    const cfg = b.type.ghost;
+    if (!cfg || !b.alive) return;
+    b.phaseT -= dt;
+    if (b.phaseT > 0) return;
+    b.phased = !b.phased;
+    b.phaseT = b.phased ? cfg.faded : cfg.solid;
+    if (b.phased && b.stuck > 0) b.stuck = 0.0001;   // fading out slips free of a web
+    burst(b.x, b.y, { light: '#ffffff', base: '#e6e0f5', dark: '#b9b0d6' }, 10);
+  }
+
+  function updateZap(b, dt) {
+    const cfg = b.type.zap;
+    if (!cfg || !b.alive) return;
+    b.zapT -= dt;
+    if (b.zapT > 0) return;
+    b.zapT = cfg.every;
+    const foe = balls[1 - b.side];
+    if (!foe || !foe.alive) return;
+    // a jagged bolt from the ball to the enemy
+    const pts = [{ x: b.x, y: b.y }];
+    const steps = 7;
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps;
+      pts.push({ x: b.x + (foe.x - b.x) * t + (Math.random() - 0.5) * 14, y: b.y + (foe.y - b.y) * t + (Math.random() - 0.5) * 14 });
+    }
+    pts.push({ x: foe.x, y: foe.y });
+    effects.push({ kind: 'bolt', pts, t: 0, life: 0.25 });
+    hurt(foe, cfg.damage, b, '#ffe14d');
+    burst(foe.x, foe.y, { light: '#ffffff', base: '#ffe14d', dark: '#6f8ff5' }, 10);
+    shake = Math.max(shake, 0.1);
   }
 
   // ---------------------------------------------------------------------------
@@ -1098,7 +1253,7 @@
         }
         continue;
       }
-      if (b.webImmune > 0 || b.latch) continue;   // a vampire mid-bite rides over webs
+      if (b.webImmune > 0 || b.latch || b.phased) continue;   // a biting vampire or faded ghost passes over webs
       for (const wb of webs) {
         if (wb.owner === b || wb.owner.side === b.side || wb.holding) continue;
         if (distToSegment(b.x, b.y, wb.x1, wb.y1, wb.x2, wb.y2) > b.r) continue;
@@ -1119,6 +1274,7 @@
   // Update
   // ---------------------------------------------------------------------------
   const STEP = 1 / 120;
+  const BALL_CHILL_SLOW = BALL_TYPES.ice.freeze.slow;
 
   function update(dt) {
     roundTimer += dt;
@@ -1126,19 +1282,27 @@
       for (const b of balls) {
         if (!b.alive || b.stuck > 0 || b.latch) continue;
         settleSpeed(b, dt);
-        b.x += b.vx * dt;
-        b.y += b.vy * dt;
+        const slow = b.chill > 0 ? 1 - BALL_CHILL_SLOW : 1;   // chilled balls crawl
+        b.x += b.vx * dt * slow;
+        b.y += b.vy * dt * slow;
         bounceWalls(b);
         b.spikeCd = Math.max(0, b.spikeCd - dt);
         spikeCollisions(b);
       }
-      for (const b of balls) updateVampire(b, dt);
+      for (const b of balls) {
+        updateVampire(b, dt);
+        updateBomb(b, dt);
+        updateGhost(b, dt);
+        updateZap(b, dt);
+        b.chill = Math.max(0, b.chill - dt);
+      }
       for (const sp of spikes) sp.t += dt;
       for (let i = 0; i < balls.length; i++)
         for (let j = i + 1; j < balls.length; j++) {
           const a = balls[i], b = balls[j];
           if (!a.alive || !b.alive) continue;
           if ((a.latch && a.latch.target === b) || (b.latch && b.latch.target === a)) continue;
+          if (a.phased || b.phased) continue;   // a faded ghost passes straight through
           axeClash(a, b);
           axeHits(a, b);
           axeHits(b, a);
@@ -1168,6 +1332,8 @@
       p.vx *= 0.97; p.vy *= 0.97;
     }
     particles = particles.filter(p => p.t < p.life);
+    for (const fx of effects) fx.t += dt;
+    effects = effects.filter(fx => fx.t < fx.life);
     for (const fx of executeFx) fx.t += dt;
     executeFx = executeFx.filter(fx => fx.t < 0.7);
     shake = Math.max(0, shake - dt);
@@ -1340,6 +1506,68 @@
     }
   }
 
+  function drawEffects() {
+    for (const fx of effects) {
+      const k = fx.t / fx.life;
+      if (fx.kind === 'boom') {
+        const R = fx.r * Math.min(1, k * 3);
+        ctx.globalAlpha = 0.35 * (1 - k);
+        ctx.fillStyle = '#ffb03b';
+        for (let dy = -R; dy <= R; dy++) {
+          const w = Math.floor(Math.sqrt(R * R - dy * dy));
+          ctx.fillRect(Math.round(fx.x - w), Math.round(fx.y + dy), w * 2 + 1, 1);
+        }
+        ctx.globalAlpha = 1 - k;
+        for (let i = 0; i < 64; i++) {
+          const a = i / 64 * Math.PI * 2;
+          ctx.fillStyle = i % 2 ? '#fff3b0' : '#ff5a1f';
+          ctx.fillRect(Math.round(fx.x + Math.cos(a) * R), Math.round(fx.y + Math.sin(a) * R), 2, 2);
+        }
+      } else if (fx.kind === 'bolt') {
+        ctx.globalAlpha = 1 - k;
+        for (const [off, col] of [[1, '#6f8ff5'], [-1, '#6f8ff5'], [0, '#ffffff']]) {
+          ctx.fillStyle = col;
+          for (let i = 0; i < fx.pts.length - 1; i++) {
+            pixLine(fx.pts[i].x + off, fx.pts[i].y, fx.pts[i + 1].x + off, fx.pts[i + 1].y);
+          }
+        }
+        ctx.fillStyle = '#ffe14d';
+        for (let i = 0; i < fx.pts.length - 1; i++) pixLine(fx.pts[i].x, fx.pts[i].y + 1, fx.pts[i + 1].x, fx.pts[i + 1].y + 1);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Bomb fuse with a flickering spark; it flickers faster as it burns down.
+  function drawFuse(x, y, r, fuseLeft) {
+    ctx.fillStyle = '#c9a36b';
+    pixLine(x, y - r - 1, x + 2, y - r - 4);
+    pixLine(x + 2, y - r - 4, x + 5, y - r - 5);
+    const rate = fuseLeft < 1 ? 40 : 120;
+    if (Math.floor(performance.now() / rate) % 2 === 0) {
+      ctx.fillStyle = '#fff3b0'; ctx.fillRect(Math.round(x + 5), Math.round(y - r - 6), 2, 2);
+      ctx.fillStyle = '#ff8a3d'; ctx.fillRect(Math.round(x + 6), Math.round(y - r - 7), 1, 1);
+      ctx.fillRect(Math.round(x + 4), Math.round(y - r - 7), 1, 1);
+    }
+  }
+
+  // Frost tint on a chilled ball.
+  function drawChill(b) {
+    if (!b.alive || b.chill <= 0) return;
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#9fe3f5';
+    for (let dy = -b.r; dy <= b.r; dy++) {
+      const w = Math.floor(Math.sqrt(b.r * b.r - dy * dy));
+      ctx.fillRect(Math.round(b.x - w), Math.round(b.y + dy), w * 2 + 1, 1);
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 6; i++) {
+      const a = i * Math.PI / 3 + performance.now() / 900;
+      ctx.fillRect(Math.round(b.x + Math.cos(a) * (b.r + 2)), Math.round(b.y + Math.sin(a) * (b.r + 2)), 1, 1);
+    }
+  }
+
   // Shimmering hex-dotted bubble around a shielded ball.
   function drawShield(b) {
     if (!b.alive || !b.shielded) return;
@@ -1390,6 +1618,15 @@
   }
 
   function drawWeapon(b) {
+    if (b.type.cap && b.alive) drawFuse(b.x, b.y, b.r, b.fuse);
+    if (b.type.zap && b.alive && b.zapT < 0.6) {
+      // crackling sparks while the next strike charges
+      ctx.fillStyle = '#ffe14d';
+      for (let i = 0; i < 4; i++) {
+        const a = Math.random() * Math.PI * 2;
+        ctx.fillRect(Math.round(b.x + Math.cos(a) * (b.r + 2)), Math.round(b.y + Math.sin(a) * (b.r + 2)), 1, 1);
+      }
+    }
     if (b.type.studs && b.alive) drawStuds(b.x, b.y, b.r, performance.now() / 600);
     if (b.type.fangs && b.alive) drawFangs(b.x, b.y, b.r, b.face, !!b.latch);
     if (b.type.legs && b.alive) {
@@ -1456,6 +1693,14 @@
   const tctx = tintBuf.getContext('2d');
   function drawBallWithFlash(b) {
     if (!b.alive) return;
+    if (b.phased) {
+      // a faded ghost is see-through
+      ctx.save();
+      ctx.globalAlpha = 0.3 + Math.sin(performance.now() / 120) * 0.08;
+      drawBall(b);
+      ctx.restore();
+      return;
+    }
     if (b.flash <= 0) return drawBall(b);
     const spr = b.type.sprite;
     tintBuf.width = spr.width; tintBuf.height = spr.height;
@@ -1487,6 +1732,7 @@
     if (t.studs) drawStuds(ix + t.radius, 16 + t.radius, t.radius, performance.now() / 600);
     const iconFace = alignRight ? Math.PI : 0;
     if (t.fangs) drawFangs(ix + t.radius, 16 + t.radius, t.radius, iconFace, false);
+    if (t.cap) drawFuse(ix + t.radius, 16 + t.radius, t.radius, 9);
     ctx.drawImage(t.sprite, ix, 16);
     if (t.fangs) drawVampEyes(ix + t.radius, 16 + t.radius, t.radius, iconFace);
     // ball name
@@ -1524,6 +1770,15 @@
       const n = spikes.filter(sp => sp.owner === ball).length;
       const txt = 'SPIKES ' + n + '/' + t.spikes.max;
       drawText(txt, alignRight ? x - textWidth(txt) : x, line, '#e4e8ee');
+      line += 8;
+    }
+    const info = [];
+    if (t.bomb) info.push(['BOOM IN ' + Math.max(0, ball.fuse).toFixed(1) + 'S', ball.fuse < 1 ? '#ff5a1f' : '#ffb03b']);
+    if (t.ghost) info.push([(ball.phased ? 'FADED ' : 'SOLID ') + Math.max(0, ball.phaseT).toFixed(1) + 'S', ball.phased ? '#ffffff' : '#b9b0d6']);
+    if (t.zap) info.push(['ZAP IN ' + Math.max(0, ball.zapT).toFixed(1) + 'S', '#ffe14d']);
+    if (ball.chill > 0) info.push(['SLOWED ' + ball.chill.toFixed(1) + 'S', '#9fe3f5']);
+    for (const [txt, col] of info) {
+      drawText(txt, alignRight ? x - textWidth(txt) : x, line, col);
       line += 8;
     }
     if (t.vampire) {
@@ -1625,6 +1880,7 @@
       if (t.legs) drawLegs(cx, cy, t.radius, hot ? performance.now() / 120 : 0);
       if (t.studs) drawStuds(cx, cy, t.radius, hot ? performance.now() / 300 : 0);
       if (t.fangs) drawFangs(cx, cy, t.radius, 0, hot);
+      if (t.cap) drawFuse(cx, cy, t.radius, hot ? 0.5 : 9);
       ctx.drawImage(t.sprite, cx - t.radius, cy - t.radius);
       if (t.fangs) drawVampEyes(cx, cy, t.radius, 0);
       ctx.restore();
@@ -1643,6 +1899,10 @@
       if (t.rng) drawText('ROLL ' + t.rng.spinTime + 'S', tx, ty + 24, '#9fb6dc');
       if (t.spikes) drawText('SPIKE ' + t.spikes.medium.damage + '-' + t.spikes.big.damage, tx, ty + 24, '#e4e8ee');
       if (t.vampire) drawText('DRAIN ' + (t.vampire.drain / t.vampire.tickEvery) + '/S', tx, ty + 24, '#ff4f6d');
+      if (t.bomb) drawText('BOOM ' + t.bomb.damage, tx, ty + 24, '#ffb03b');
+      if (t.ghost) drawText('FADE ' + t.ghost.faded + 'S', tx, ty + 24, '#e6e0f5');
+      if (t.zap) drawText('ZAP ' + t.zap.damage + '/' + t.zap.every + 'S', tx, ty + 24, '#ffe14d');
+      if (t.freeze) drawText('SLOW ' + t.freeze.time + 'S', tx, ty + 24, '#9fe3f5');
     });
   }
 
@@ -1669,6 +1929,8 @@
       for (const b of balls) drawBallWithFlash(b);
       for (const b of balls) drawWrap(b);
       for (const b of balls) drawShield(b);
+      for (const b of balls) drawChill(b);
+      drawEffects();
       drawExecuteFx();
     }
     for (const p of particles) {
