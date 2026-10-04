@@ -74,6 +74,7 @@
   const BALL_TYPES = {
     normal: {
       name: 'NORMAL BALL',
+      short: 'NORMAL',
       hp: 100,
       damage: 10,
       mass: 1,
@@ -83,6 +84,7 @@
     },
     axe: {
       name: 'AXE BALL',
+      short: 'AXE',
       hp: 100,
       damage: 1,     // the ball body barely hurts; the axe does the real damage
       mass: 1,
@@ -97,6 +99,25 @@
         spinAccel: 0.3,    // extra radians per second, every second it stays alive
         spinMax: 12,
         hitCooldown: 0.3,  // seconds before the axe can hit the same ball again
+      },
+    },
+    spider: {
+      name: 'SPIDER BALL',
+      short: 'SPIDER',
+      hp: 100,
+      damage: 8,
+      mass: 1,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#6a5683', base: '#3d2f50', dark: '#271d35', rim: '#120d19' },
+      eyes: true,    // red spider eyes and an hourglass mark
+      legs: true,
+      // Touch a wall to start a strand, touch a different wall to set the web
+      // between the two spots. Enemies that touch a set web get stuck.
+      web: {
+        stuckTime: 3,   // seconds an enemy stays stuck
+        life: 10,       // seconds a set web lasts
+        max: 2,         // webs on the field at once (oldest goes first)
       },
     },
   };
@@ -257,6 +278,19 @@
         g.fillStyle = Math.abs(dy) < r - 3 ? '#ffd27a' : '#ff8a3d'; g.fillRect(cx, py, 1, 1);
       }
     }
+    if (type.eyes) {
+      // hourglass on the belly
+      g.fillStyle = '#d4202c';
+      [5, 3, 1, 1, 3, 5].forEach((w, row) =>
+        g.fillRect(r - Math.floor(w / 2), r + 5 + row, w, 1));
+      // two big eyes and two small ones, up top
+      const eye = (ex, ey, size) => {
+        g.fillStyle = '#ff2a3a'; g.fillRect(ex, ey, size, size);
+        g.fillStyle = '#ffd0d4'; g.fillRect(ex, ey, 1, 1);
+      };
+      eye(r - 4, r - 8, 3); eye(r + 2, r - 8, 3);
+      eye(r - 6, r - 5, 2); eye(r + 5, r - 5, 2);
+    }
     // specular highlight
     g.fillStyle = '#ffffff';
     g.fillRect(r - 6, r - 8, 3, 2);
@@ -311,7 +345,7 @@
     { label: 'CPU', color: '#ffd23f' },
   ];
 
-  let balls, popups, particles, state, winner, shake, aim, roundTimer, firstHitDone;
+  let balls, popups, particles, state, winner, shake, aim, roundTimer, firstHitDone, webs;
   const picks = ['normal', 'normal'];   // ball type for YOU and CPU
   let hoverCard = -1;
 
@@ -325,6 +359,10 @@
       angle: side === 0 ? -0.6 : Math.PI - 0.6,
       spin: t.weapon ? t.weapon.spinStart : 0,
       weaponCd: 0,
+      // spider
+      strand: null,       // {x, y, wall} where the current web strand is anchored
+      // being caught in a web
+      stuck: 0, stuckWeb: null, savedVx: 0, savedVy: 0, webImmune: 0,
     };
   }
 
@@ -344,8 +382,8 @@
 
   // Card rectangles on the pick screen, laid out in a row inside the arena.
   function cardRects() {
-    const n = BALL_ORDER.length, gap = 6;
-    const w = Math.min(60, Math.floor((PLAY.right - PLAY.left - 12 - gap * (n - 1)) / n));
+    const n = BALL_ORDER.length, gap = 4;
+    const w = Math.min(60, Math.floor((PLAY.right - PLAY.left - 8 - gap * (n - 1)) / n));
     const h = 84;
     const total = n * w + (n - 1) * gap;
     const x0 = Math.round((PLAY.left + PLAY.right - total) / 2);
@@ -366,6 +404,7 @@
     ];
     popups = [];
     particles = [];
+    webs = [];
     state = 'aim';      // select -> aim -> fight -> over
     winner = null;
     shake = 0;
@@ -418,7 +457,7 @@
       if (i >= 0) choose(BALL_ORDER[i]);
     } else if (state === 'aim') {
       // clicking your own panel goes back to the pick screen
-      if (p.x < ARENA.x - 2 && p.y < 94) startSelect();
+      if (p.x < ARENA.x - 2 && p.y < 102) startSelect();
       else { aim = p; launch(); }
     } else if (state === 'over' && roundTimer > 0.6) {
       startSelect();
@@ -466,11 +505,12 @@
     const minDist = a.r + b.r;
     if (dist >= minDist || dist === 0) return;
 
-    // push apart so they don't overlap
+    // push apart so they don't overlap (a ball stuck in a web doesn't budge)
     const nx = dx / dist, ny = dy / dist;
     const overlap = minDist - dist;
-    a.x -= nx * overlap / 2; a.y -= ny * overlap / 2;
-    b.x += nx * overlap / 2; b.y += ny * overlap / 2;
+    const shareA = a.stuck > 0 ? 0 : b.stuck > 0 ? 1 : 0.5;
+    a.x -= nx * overlap * shareA; a.y -= ny * overlap * shareA;
+    b.x += nx * overlap * (1 - shareA); b.y += ny * overlap * (1 - shareA);
 
     // only react if they are moving toward each other
     const rel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
@@ -481,11 +521,17 @@
     const driveA = ma * (a.vx * nx + a.vy * ny);
     const driveB = mb * -(b.vx * nx + b.vy * ny);
 
-    // elastic bounce: exchange momentum along the contact normal
-    const j = 2 * rel / (ma + mb);
-    a.vx -= j * mb * nx; a.vy -= j * mb * ny;
-    b.vx += j * ma * nx; b.vy += j * ma * ny;
-    clampSpeed(a); clampSpeed(b);
+    if (a.stuck > 0 || b.stuck > 0) {
+      // a stuck ball is pinned in place: the free ball bounces straight off it
+      if (a.stuck <= 0) { a.vx -= 2 * rel * nx; a.vy -= 2 * rel * ny; clampSpeed(a); }
+      if (b.stuck <= 0) { b.vx += 2 * rel * nx; b.vy += 2 * rel * ny; clampSpeed(b); }
+    } else {
+      // elastic bounce: exchange momentum along the contact normal
+      const j = 2 * rel / (ma + mb);
+      a.vx -= j * mb * nx; a.vy -= j * mb * ny;
+      b.vx += j * ma * nx; b.vy += j * ma * ny;
+      clampSpeed(a); clampSpeed(b);
+    }
 
     // First hit: the ball driving in harder strikes first. If that knocks
     // the other one out, it never gets to hit back.
@@ -543,8 +589,10 @@
     // knock the victim away; a faster-spinning axe hits with more momentum
     const kx = b.x - a.x, ky = b.y - a.y, kl = Math.hypot(kx, ky) || 1;
     const knock = (40 + Math.abs(a.spin) * 6) / b.type.mass;
-    b.vx += kx / kl * knock; b.vy += ky / kl * knock;
-    clampSpeed(b);
+    if (b.stuck <= 0) {
+      b.vx += kx / kl * knock; b.vy += ky / kl * knock;
+      clampSpeed(b);
+    }
     b.squash = 0.14;
     shake = 0.16;
     burst(blade.x, blade.y, { light: '#ffffff', base: '#ffd27a', dark: '#ff7a2f' }, 12);
@@ -582,11 +630,12 @@
   }
 
   function bounceWalls(ball) {
-    let hit = false;
-    if (ball.x - ball.r < PLAY.left)   { ball.x = PLAY.left + ball.r;   ball.vx = Math.abs(ball.vx);  hit = true; }
-    if (ball.x + ball.r > PLAY.right)  { ball.x = PLAY.right - ball.r;  ball.vx = -Math.abs(ball.vx); hit = true; }
-    if (ball.y - ball.r < PLAY.top)    { ball.y = PLAY.top + ball.r;    ball.vy = Math.abs(ball.vy);  hit = true; }
-    if (ball.y + ball.r > PLAY.bottom) { ball.y = PLAY.bottom - ball.r; ball.vy = -Math.abs(ball.vy); hit = true; }
+    let hit = null;   // which wall, and the spot on it
+    if (ball.x - ball.r < PLAY.left)   { ball.x = PLAY.left + ball.r;   ball.vx = Math.abs(ball.vx);  hit = { wall: 'left',   x: PLAY.left,   y: ball.y }; }
+    if (ball.x + ball.r > PLAY.right)  { ball.x = PLAY.right - ball.r;  ball.vx = -Math.abs(ball.vx); hit = { wall: 'right',  x: PLAY.right,  y: ball.y }; }
+    if (ball.y - ball.r < PLAY.top)    { ball.y = PLAY.top + ball.r;    ball.vy = Math.abs(ball.vy);  hit = { wall: 'top',    x: ball.x, y: PLAY.top }; }
+    if (ball.y + ball.r > PLAY.bottom) { ball.y = PLAY.bottom - ball.r; ball.vy = -Math.abs(ball.vy); hit = { wall: 'bottom', x: ball.x, y: PLAY.bottom }; }
+    if (hit && ball.type.web) spiderTouchWall(ball, hit);
     if (hit) {
       ball.squash = 0.08;
       // nudge the angle a little so balls don't get stuck in loops that never meet
@@ -607,6 +656,78 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Spider webs
+  // ---------------------------------------------------------------------------
+  function spiderTouchWall(spider, hit) {
+    const w = spider.type.web;
+    if (!spider.strand) {
+      // first wall: anchor a strand here
+      spider.strand = { x: hit.x, y: hit.y, wall: hit.wall };
+      burst(hit.x, hit.y, { light: '#ffffff', base: '#e6e9f2', dark: '#b7bfd3' }, 4);
+      return;
+    }
+    if (spider.strand.wall === hit.wall) {
+      // same wall again: just move the anchor
+      spider.strand = { x: hit.x, y: hit.y, wall: hit.wall };
+      return;
+    }
+    // a different wall: the web is set between the two spots
+    webs.push({ x1: spider.strand.x, y1: spider.strand.y, x2: hit.x, y2: hit.y, owner: spider, t: 0, life: w.life });
+    // too many webs: drop the oldest one that isn't holding someone
+    while (webs.filter(wb => wb.owner === spider).length > w.max) {
+      const old = webs.findIndex(wb => wb.owner === spider && !wb.holding);
+      if (old < 0) break;
+      webs.splice(old, 1);
+    }
+    spider.strand = null;
+    popups.push({ x: hit.x, y: hit.y - 6, text: 'WEB!', t: 0, color: '#e6e9f2' });
+    burst(hit.x, hit.y, { light: '#ffffff', base: '#e6e9f2', dark: '#b7bfd3' }, 8);
+  }
+
+  function distToSegment(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const len2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / len2));
+    return Math.hypot(px - (x1 + dx * t), py - (y1 + dy * t));
+  }
+
+  function updateWebs(dt) {
+    for (const wb of webs) wb.t += dt;
+    webs = webs.filter(wb => wb.t < wb.life || wb.holding);
+    for (const b of balls) {
+      if (!b.alive) continue;
+      b.webImmune = Math.max(0, b.webImmune - dt);
+      if (b.stuck > 0) {
+        b.stuck -= dt;
+        if (b.stuck <= 0) {
+          // break free: the web snaps and the ball carries on
+          b.stuck = 0;
+          b.vx = b.savedVx; b.vy = b.savedVy;
+          b.webImmune = 1;
+          webs = webs.filter(wb => wb !== b.stuckWeb);
+          b.stuckWeb = null;
+          burst(b.x, b.y, { light: '#ffffff', base: '#e6e9f2', dark: '#b7bfd3' }, 10);
+        }
+        continue;
+      }
+      if (b.webImmune > 0) continue;
+      for (const wb of webs) {
+        if (wb.owner === b || wb.owner.side === b.side || wb.holding) continue;
+        if (distToSegment(b.x, b.y, wb.x1, wb.y1, wb.x2, wb.y2) > b.r) continue;
+        const stuckTime = wb.owner.type.web.stuckTime;
+        b.stuck = stuckTime;
+        b.stuckWeb = wb;
+        wb.holding = true;
+        b.savedVx = b.vx; b.savedVy = b.vy;
+        b.vx = 0; b.vy = 0;
+        popups.push({ x: b.x, y: b.y - b.r - 4, text: 'STUCK!', t: -0.2, color: '#e6e9f2' });
+        burst(b.x, b.y, { light: '#ffffff', base: '#e6e9f2', dark: '#b7bfd3' }, 8);
+        break;
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Update
   // ---------------------------------------------------------------------------
   const STEP = 1 / 120;
@@ -615,7 +736,7 @@
     roundTimer += dt;
     if (state === 'fight') {
       for (const b of balls) {
-        if (!b.alive) continue;
+        if (!b.alive || b.stuck > 0) continue;
         settleSpeed(b, dt);
         b.x += b.vx * dt;
         b.y += b.vy * dt;
@@ -630,6 +751,8 @@
           axeHits(b, a);
           if (a.alive && b.alive) collideBalls(a, b);
         }
+
+      updateWebs(dt);
 
       const alive = balls.filter(b => b.alive);
       if (alive.length <= 1) {
@@ -656,6 +779,100 @@
   // ---------------------------------------------------------------------------
   // Draw
   // ---------------------------------------------------------------------------
+  function pixLine(x0, y0, x1, y1) {
+    x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+    const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+    let err = dx + dy;
+    for (let i = 0; i < 400; i++) {
+      ctx.fillRect(x0, y0, 1, 1);
+      if (x0 === x1 && y0 === y1) break;
+      const e2 = 2 * err;
+      if (e2 >= dy) { err += dy; x0 += sx; }
+      if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+  }
+
+  // Eight jointed legs, four per side, scuttling while the spider moves.
+  function drawLegs(x, y, r, phase) {
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 4; i++) {
+        const a = (-0.75 + i * 0.5);              // spread from front to back
+        const wig = Math.sin(phase + i * 1.7 + (side > 0 ? Math.PI : 0)) * 0.18;
+        const ang = (side > 0 ? 0 : Math.PI) + side * (a + wig);
+        const hipX = x + Math.cos(ang) * (r - 2), hipY = y + Math.sin(ang) * (r - 2);
+        const kneeX = x + Math.cos(ang) * (r + 5), kneeY = y + Math.sin(ang) * (r + 5) - 4;
+        const footX = x + Math.cos(ang) * (r + 9), footY = y + Math.sin(ang) * (r + 9) + 2;
+        ctx.fillStyle = '#120d19';
+        pixLine(hipX, hipY + 1, kneeX, kneeY + 1); pixLine(kneeX, kneeY + 1, footX, footY + 1);
+        ctx.fillStyle = '#4b3a62';
+        pixLine(hipX, hipY, kneeX, kneeY); pixLine(kneeX, kneeY, footX, footY);
+      }
+    }
+  }
+
+  function drawWebs() {
+    for (const wb of webs) {
+      const fade = wb.holding ? 1 : Math.min(1, (wb.life - wb.t) / 1.5);
+      const dx = wb.x2 - wb.x1, dy = wb.y2 - wb.y1, len = Math.hypot(dx, dy) || 1;
+      const px = -dy / len, py = dx / len;   // perpendicular
+      ctx.globalAlpha = 0.9 * fade;
+      ctx.fillStyle = '#f2f4fa';
+      pixLine(wb.x1, wb.y1, wb.x2, wb.y2);                       // main thread
+      ctx.globalAlpha = 0.55 * fade;
+      ctx.fillStyle = '#d6dbe8';
+      pixLine(wb.x1 + px * 3, wb.y1 + py * 3, wb.x2 + px * 3, wb.y2 + py * 3);
+      pixLine(wb.x1 - px * 3, wb.y1 - py * 3, wb.x2 - px * 3, wb.y2 - py * 3);
+      // zig-zag cross threads tying the three strands together
+      const steps = Math.floor(len / 5);
+      for (let i = 0; i < steps; i++) {
+        const t0 = i / steps, t1 = (i + 1) / steps;
+        const s0 = i % 2 ? 3 : -3, s1 = -s0;
+        pixLine(wb.x1 + dx * t0 + px * s0, wb.y1 + dy * t0 + py * s0,
+                wb.x1 + dx * t1 + px * s1, wb.y1 + dy * t1 + py * s1);
+      }
+      // anchor knots on the walls
+      ctx.globalAlpha = fade;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(Math.round(wb.x1) - 1, Math.round(wb.y1) - 1, 3, 3);
+      ctx.fillRect(Math.round(wb.x2) - 1, Math.round(wb.y2) - 1, 3, 3);
+    }
+    ctx.globalAlpha = 1;
+    // strands still being spun, from the wall anchor to the spider
+    for (const b of balls) {
+      if (!b.alive || !b.strand) continue;
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle = '#e6e9f2';
+      const n = Math.max(1, Math.floor(Math.hypot(b.x - b.strand.x, b.y - b.strand.y) / 2));
+      for (let i = 0; i <= n; i += 2) {
+        const t = i / n;
+        ctx.fillRect(Math.round(b.strand.x + (b.x - b.strand.x) * t), Math.round(b.strand.y + (b.y - b.strand.y) * t), 1, 1);
+      }
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(Math.round(b.strand.x) - 1, Math.round(b.strand.y) - 1, 2, 2);
+    }
+  }
+
+  // Web wrapped around a stuck ball.
+  function drawWrap(b) {
+    if (!b.alive || b.stuck <= 0) return;
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = '#f2f4fa';
+    const r = b.r + 1;
+    for (let k = 0; k < 4; k++) {
+      const a = k * Math.PI / 4 + 0.3;
+      pixLine(b.x - Math.cos(a) * r, b.y - Math.sin(a) * r, b.x + Math.cos(a) * r, b.y + Math.sin(a) * r);
+    }
+    ctx.globalAlpha = 1;
+    drawTextCentered(Math.ceil(b.hp), b.x + 1, Math.round(b.y) - 2, '#ffffff', 1, '#1a2233');
+    // countdown bar under the ball
+    const max = b.stuckWeb ? b.stuckWeb.owner.type.web.stuckTime : 3;
+    const w = Math.round((b.r * 2) * (b.stuck / max));
+    ctx.fillStyle = '#0a1020'; ctx.fillRect(Math.round(b.x - b.r) - 1, Math.round(b.y + b.r + 2), b.r * 2 + 2, 3);
+    ctx.fillStyle = '#e6e9f2'; ctx.fillRect(Math.round(b.x - b.r), Math.round(b.y + b.r + 3), w, 1);
+  }
+
   function drawAxe(x, y, angle, alpha = 1, scale = 1) {
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -667,6 +884,10 @@
   }
 
   function drawWeapon(b) {
+    if (b.type.legs && b.alive) {
+      const moving = b.stuck > 0 ? 0 : Math.hypot(b.vx, b.vy);
+      drawLegs(b.x, b.y, b.r, performance.now() / 1000 * (4 + moving * 0.12));
+    }
     if (!b.type.weapon || !b.alive) return;
     const speed = Math.abs(b.spin);
     // swoosh trail behind the blade once it gets going
@@ -741,6 +962,7 @@
       const icx = ix + t.radius, icy = 16 + t.radius;
       drawAxe(icx, icy, alignRight ? Math.PI + 0.25 : -0.25);
     }
+    if (t.legs) drawLegs(ix + t.radius, 16 + t.radius, t.radius, performance.now() / 250);
     ctx.drawImage(t.sprite, ix, 16);
     // ball name
     const lbl = t.name;
@@ -760,11 +982,20 @@
       const mult = 'AXE SPEED X' + (Math.abs(ball.spin) / t.weapon.spinStart).toFixed(1);
       drawText(mult, alignRight ? x - textWidth(mult) : x, 67, '#ffb03b');
     }
-    const speed = 'SPEED X' + (Math.hypot(ball.vx, ball.vy) / t.speed).toFixed(1);
-    drawText(speed, alignRight ? x - textWidth(speed) : x, t.weapon ? 75 : 67, '#9fe6ff');
+    let line = 67;
+    if (t.weapon) line += 8;
+    if (t.web) {
+      const mine = webs ? webs.filter(wb => wb.owner === ball).length : 0;
+      const webText = 'WEBS ' + mine + '/' + t.web.max + (ball.strand ? ' +SPINNING' : '');
+      drawText(webText, alignRight ? x - textWidth(webText) : x, line, '#e6e9f2');
+      line += 8;
+    }
+    const speed = ball.stuck > 0 ? 'STUCK ' + ball.stuck.toFixed(1) + 'S'
+      : 'SPEED X' + (Math.hypot(ball.vx, ball.vy) / t.speed).toFixed(1);
+    drawText(speed, alignRight ? x - textWidth(speed) : x, line, ball.stuck > 0 ? '#ffffff' : '#9fe6ff');
     if (state === 'aim') {
       const hint = alignRight ? 'RANDOM PICK' : 'CLICK TO CHANGE';
-      drawText(hint, alignRight ? x - textWidth(hint) : x, 86, '#9fb6dc');
+      drawText(hint, alignRight ? x - textWidth(hint) : x, 94, '#9fb6dc');
     }
   }
 
@@ -812,17 +1043,22 @@
       }
       // ball (with weapon)
       const cx = c.x + Math.floor(c.w / 2), cy = y + 22;
+      ctx.save();
+      ctx.beginPath(); ctx.rect(c.x, y, c.w, c.h); ctx.clip();
       if (t.weapon) {
-        const ang = -Math.PI / 4 - (hot ? performance.now() / 300 : 0);
-        drawAxe(cx, cy, ang, 1, 0.75);
+        const ang = -Math.PI * 0.75 - (hot ? performance.now() / 300 : 0);
+        drawAxe(cx, cy, ang, 1, 0.6);
       }
+      if (t.legs) drawLegs(cx, cy, t.radius, hot ? performance.now() / 120 : 0);
       ctx.drawImage(t.sprite, cx - t.radius, cy - t.radius);
+      ctx.restore();
       // stats
-      drawTextCentered(t.name, cx, y + 42, '#ffffff');
-      drawText('HP ' + t.hp, c.x + 5, y + 52, '#5ee07a');
-      drawText('HIT ' + t.damage, c.x + 5, y + 60, '#ff8a8a');
-      if (t.weapon) drawText('AXE ' + t.weapon.damage, c.x + 5, y + 68, '#ffb03b');
-      drawTextCentered('PRESS ' + (i + 1), cx, y + c.h - 8, hot ? '#ffd23f' : '#7f93b8');
+      drawTextCentered(t.short, cx, y + 42, '#ffffff');
+      drawText('HP ' + t.hp, c.x + 3, y + 52, '#5ee07a');
+      drawText('HIT ' + t.damage, c.x + 3, y + 60, '#ff8a8a');
+      if (t.weapon) drawText('AXE ' + t.weapon.damage, c.x + 3, y + 68, '#ffb03b');
+      if (t.web) drawText('WEB ' + t.web.stuckTime + 'S', c.x + 3, y + 68, '#e6e9f2');
+      drawTextCentered('KEY ' + (i + 1), cx, y + c.h - 8, hot ? '#ffd23f' : '#7f93b8');
     });
   }
 
@@ -842,8 +1078,10 @@
     ctx.clip();
     if (state === 'aim') drawAimArrow();
     if (state !== 'select') {
+      drawWebs();
       for (const b of balls) drawWeapon(b);
       for (const b of balls) drawBallWithFlash(b);
+      for (const b of balls) drawWrap(b);
     }
     for (const p of particles) {
       ctx.globalAlpha = 1 - p.t / p.life;
