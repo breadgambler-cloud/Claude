@@ -167,6 +167,46 @@
       // it cuts all damage it takes by `reduction` and raises its own damage by `damageBoost`.
       shield: { at: 100, reduction: 0.5, damageBoost: 0.5 },
     },
+    spike: {
+      name: 'SPIKE BALL',
+      short: 'SPIKE',
+      hp: 100,
+      damage: 4,
+      mass: 1,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#d9775a', base: '#9c3b26', dark: '#6a2416', rim: '#2a0d07' },
+      studs: true,   // short steel spikes around its rim
+      // Every wall it hits grows a spike (medium or big) on that spot. Enemies
+      // bounce off spikes and take their damage.
+      spikes: {
+        medium: { len: 10, half: 5, damage: 4 },
+        big:    { len: 16, half: 7, damage: 7 },
+        max: 10,          // spikes on the field at once (oldest goes first)
+        hitCooldown: 0.35,
+      },
+    },
+    vampire: {
+      name: 'VAMPIRE BALL',
+      short: 'VAMPIRE',
+      hp: 100,
+      damage: 0,     // its body does nothing: biting is the only way it hurts you
+      mass: 1,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#8a3352', base: '#4a1426', dark: '#2a0a16', rim: '#12030a' },
+      fangs: true,
+      // It turns to face the enemy. Touch them with its fangs and it latches on,
+      // draining HP and healing itself by the same amount.
+      vampire: {
+        drain: 4,          // HP per tick
+        tickEvery: 0.5,    // seconds between drains
+        latchTime: 2,      // seconds it stays latched
+        cooldown: 1.5,     // seconds before it can bite again
+        turnRate: 5,       // radians per second it can turn toward the enemy
+        biteArc: 0.9,      // how far off-center (radians) the fangs can still bite
+      },
+    },
   };
   const BALL_ORDER = Object.keys(BALL_TYPES);
 
@@ -222,6 +262,7 @@
     const b = bg.getContext('2d');
     const sky = ['#3d8fe0', '#4d9be6', '#62a9ea', '#7ab8ee', '#93c7f1', '#acd5f4'];
     const bandH = 18;
+    b.fillStyle = sky[sky.length - 1]; b.fillRect(0, 0, W, H);   // nothing left transparent
     sky.forEach((c, i) => { b.fillStyle = c; b.fillRect(0, i * bandH, W, bandH); });
     // dither the band edges
     for (let i = 1; i < sky.length; i++) {
@@ -451,6 +492,7 @@
 
   let balls, popups, particles, state, winner, shake, aim, roundTimer, firstHitDone, webs;
   let executeFx = [];
+  let spikes = [];
   const picks = ['normal', 'normal'];   // ball type for YOU and CPU
   let hoverCard = -1;
 
@@ -472,6 +514,10 @@
       rngValue: 0, rngSpin: 0,
       // tank
       shielded: false,
+      // spike
+      spikeCd: 0,
+      // vampire
+      face: side === 0 ? 0 : Math.PI, latch: null, latchCd: 0,
     };
     if (t.rng) rollRng(ball);   // the first roll starts at launch
     return ball;
@@ -495,19 +541,16 @@
 
   // Card rectangles on the pick screen: a two-column grid inside the arena.
   function cardRects() {
-    const cols = 2, gap = 3, w = 66, h = 35;
-    const total = cols * w + (cols - 1) * gap;
-    const x0 = Math.round((PLAY.left + PLAY.right - total) / 2);
-    const y0 = PLAY.top + 21;
+    const cols = 4, gap = 4, w = 70, h = 40;
+    const y0 = 36;
     const n = BALL_ORDER.length;
     return BALL_ORDER.map((key, i) => {
-      // a lone card on the last row sits in the middle
-      const alone = i === n - 1 && n % cols === 1;
-      return {
-        key, w, h,
-        x: alone ? Math.round((PLAY.left + PLAY.right - w) / 2) : x0 + (i % cols) * (w + gap),
-        y: y0 + Math.floor(i / cols) * (h + gap),
-      };
+      // each row is centered, so a short last row sits in the middle
+      const row = Math.floor(i / cols);
+      const inRow = Math.min(cols, n - row * cols);
+      const rowW = inRow * w + (inRow - 1) * gap;
+      const x0 = Math.round((W - rowW) / 2);
+      return { key, w, h, x: x0 + (i % cols) * (w + gap), y: y0 + row * (h + gap) };
     });
   }
 
@@ -526,6 +569,7 @@
     particles = [];
     webs = [];
     executeFx = [];
+    spikes = [];
     state = 'aim';      // select -> aim -> fight -> over
     winner = null;
     shake = 0;
@@ -594,7 +638,7 @@
   // Combat
   // ---------------------------------------------------------------------------
   function hurt(ball, amount, attacker, color = '#ff6b6b') {
-    if (!ball.alive) return;
+    if (!ball.alive) return 0;
     if (attacker.type.rng) color = amount >= 20 ? '#ffd23f' : '#ff6b6b';
     if (ball.shielded) {
       amount = Math.max(1, Math.round(amount * (1 - ball.type.shield.reduction)));
@@ -626,6 +670,7 @@
       ball.alive = false;
       burst(ball.x, ball.y, ball.type.colors, 26);
     }
+    return amount;
   }
 
   // Damage this ball deals on contact. The RNG Ball deals nothing while its
@@ -705,6 +750,10 @@
     // only react if they are moving toward each other
     const rel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
     if (rel <= 0) return;
+
+    // a vampire facing the other ball bites and hangs on instead of bouncing
+    if (tryLatch(a, b)) { strike(b, a); return; }
+    if (tryLatch(b, a)) { strike(a, b); return; }
 
     // How hard each ball is driving into the other (momentum along the contact line).
     const ma = a.type.mass, mb = b.type.mass;
@@ -826,6 +875,7 @@
     if (ball.y - ball.r < PLAY.top)    { ball.y = PLAY.top + ball.r;    ball.vy = Math.abs(ball.vy);  hit = { wall: 'top',    x: ball.x, y: PLAY.top }; }
     if (ball.y + ball.r > PLAY.bottom) { ball.y = PLAY.bottom - ball.r; ball.vy = -Math.abs(ball.vy); hit = { wall: 'bottom', x: ball.x, y: PLAY.bottom }; }
     if (hit && ball.type.web) spiderTouchWall(ball, hit);
+    if (hit && ball.type.spikes) growSpike(ball, hit);
     if (hit) {
       ball.squash = 0.08;
       // nudge the angle a little so balls don't get stuck in loops that never meet
@@ -843,6 +893,154 @@
     if (ball.x + ball.r >= PLAY.right)  ball.vx = -Math.abs(ball.vx);
     if (ball.y - ball.r <= PLAY.top)    ball.vy = Math.abs(ball.vy);
     if (ball.y + ball.r >= PLAY.bottom) ball.vy = -Math.abs(ball.vy);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Spike Ball: wall spikes
+  // ---------------------------------------------------------------------------
+  const WALL_NORMALS = { left: [1, 0], right: [-1, 0], top: [0, 1], bottom: [0, -1] };
+
+  function growSpike(owner, hit) {
+    const cfg = owner.type.spikes;
+    const kind = Math.random() < 0.5 ? 'big' : 'medium';
+    const k = cfg[kind];
+    const [nx, ny] = WALL_NORMALS[hit.wall];
+    const tx = -ny, ty = nx;   // along the wall
+    // keep the base on the wall, clear of the corners
+    let cx = hit.x, cy = hit.y;
+    if (nx !== 0) cy = Math.max(PLAY.top + k.half + 1, Math.min(PLAY.bottom - k.half - 1, cy));
+    else cx = Math.max(PLAY.left + k.half + 1, Math.min(PLAY.right - k.half - 1, cx));
+    // don't stack spikes on top of each other
+    if (spikes.some(sp => sp.wall === hit.wall && Math.hypot(sp.cx - cx, sp.cy - cy) < sp.half + k.half)) return;
+    spikes.push({
+      owner, wall: hit.wall, kind, cx, cy, half: k.half, len: k.len, damage: k.damage, t: 0,
+      x1: cx + tx * k.half, y1: cy + ty * k.half,
+      x2: cx - tx * k.half, y2: cy - ty * k.half,
+      px: cx + nx * k.len, py: cy + ny * k.len,
+      nx, ny,
+    });
+    while (spikes.filter(sp => sp.owner === owner).length > cfg.max) {
+      spikes.splice(spikes.findIndex(sp => sp.owner === owner), 1);
+    }
+    burst(cx, cy, { light: '#ffffff', base: '#c9ced6', dark: '#6c737d' }, 5);
+  }
+
+  function closestOnSegment(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const len2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / len2));
+    return { x: x1 + dx * t, y: y1 + dy * t };
+  }
+
+  function insideTriangle(px, py, sp) {
+    const c = (ax, ay, bx, by) => (bx - ax) * (py - ay) - (by - ay) * (px - ax);
+    const d1 = c(sp.x1, sp.y1, sp.x2, sp.y2), d2 = c(sp.x2, sp.y2, sp.px, sp.py), d3 = c(sp.px, sp.py, sp.x1, sp.y1);
+    return (d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0);
+  }
+
+  // Enemies bounce off spikes and take damage.
+  function spikeCollisions(b) {
+    if (!b.alive || b.stuck > 0 || b.latch) return;
+    for (const sp of spikes) {
+      if (sp.owner.side === b.side) continue;
+      let nx, ny, push;
+      if (insideTriangle(b.x, b.y, sp)) {
+        nx = sp.nx; ny = sp.ny; push = b.r;
+      } else {
+        let best = null;
+        for (const [ax, ay, bx2, by2] of [[sp.x1, sp.y1, sp.px, sp.py], [sp.px, sp.py, sp.x2, sp.y2]]) {
+          const q = closestOnSegment(b.x, b.y, ax, ay, bx2, by2);
+          const dist = Math.hypot(b.x - q.x, b.y - q.y);
+          if (!best || dist < best.dist) best = { q, dist };
+        }
+        if (best.dist >= b.r) continue;
+        nx = (b.x - best.q.x) / (best.dist || 1); ny = (b.y - best.q.y) / (best.dist || 1);
+        push = b.r - best.dist;
+      }
+      b.x += nx * push; b.y += ny * push;
+      const vn = b.vx * nx + b.vy * ny;
+      if (vn < 0) { b.vx -= 2 * vn * nx; b.vy -= 2 * vn * ny; }
+      if (b.spikeCd <= 0) {
+        b.spikeCd = sp.owner.type.spikes.hitCooldown;
+        hurt(b, sp.damage, sp.owner);
+        b.squash = 0.12;
+        shake = Math.max(shake, 0.12);
+        burst(b.x - nx * b.r, b.y - ny * b.r, { light: '#ffffff', base: '#ffb0a0', dark: '#c0392b' }, 8);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Vampire Ball: turn to face the enemy, bite, drain
+  // ---------------------------------------------------------------------------
+  function angleDiff(a, b) {
+    let d = b - a;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  }
+
+  // Bite if the fangs are facing the enemy. Returns true if it latched on.
+  function tryLatch(v, foe) {
+    const cfg = v.type.vampire;
+    if (!cfg || v.latch || v.latchCd > 0 || v.stuck > 0 || !foe.alive || foe.latch) return false;
+    const toFoe = Math.atan2(foe.y - v.y, foe.x - v.x);
+    if (Math.abs(angleDiff(v.face, toFoe)) > cfg.biteArc) return false;
+    v.latch = { target: foe, t: cfg.latchTime, tick: 0.15, ang: Math.atan2(v.y - foe.y, v.x - foe.x) };
+    popups.push({ x: v.x, y: v.y - v.r - 12, text: 'BITE!', t: -0.1, color: '#ff4f6d' });
+    burst((v.x + foe.x) / 2, (v.y + foe.y) / 2, { light: '#ffffff', base: '#ff4f6d', dark: '#8a1028' }, 8);
+    return true;
+  }
+
+  function detach(v) {
+    const foe = v.latch.target;
+    const dx = v.x - foe.x, dy = v.y - foe.y, l = Math.hypot(dx, dy) || 1;
+    v.vx = dx / l * v.type.speed; v.vy = dy / l * v.type.speed;
+    v.latch = null;
+    v.latchCd = v.type.vampire.cooldown;
+  }
+
+  function updateVampire(v, dt) {
+    const cfg = v.type.vampire;
+    if (!cfg || !v.alive) return;
+    const foe = balls[1 - v.side];
+    if (v.latch) {
+      if (!foe.alive) { detach(v); return; }
+      const L = v.latch;
+      L.t -= dt; L.tick -= dt;
+      // ride along on the victim, fangs in
+      const dist = v.r + foe.r - 1;
+      v.x = Math.max(PLAY.left + v.r, Math.min(PLAY.right - v.r, foe.x + Math.cos(L.ang) * dist));
+      v.y = Math.max(PLAY.top + v.r, Math.min(PLAY.bottom - v.r, foe.y + Math.sin(L.ang) * dist));
+      v.vx = foe.vx; v.vy = foe.vy;
+      v.face = Math.atan2(foe.y - v.y, foe.x - v.x);
+      if (L.tick <= 0) {
+        L.tick += cfg.tickEvery;
+        const got = hurt(foe, cfg.drain, v, '#c0203a');
+        if (got > 0 && v.hp < v.maxHp) {
+          const heal = Math.min(got, v.maxHp - v.hp);
+          v.hp += heal;
+          popups.push({ x: v.x, y: v.y - v.r - 4, text: '+' + heal, t: 0, color: '#5ee07a' });
+        }
+        // blood flowing from the victim into the vampire
+        for (let i = 0; i < 6; i++) {
+          particles.push({
+            x: foe.x + (Math.random() - 0.5) * 8, y: foe.y + (Math.random() - 0.5) * 8,
+            vx: (v.x - foe.x) * 3 + (Math.random() - 0.5) * 20, vy: (v.y - foe.y) * 3 + (Math.random() - 0.5) * 20,
+            life: 0.35, t: 0, color: i % 2 ? '#c0203a' : '#ff4f6d',
+          });
+        }
+      }
+      if (L.t <= 0) detach(v);
+      return;
+    }
+    v.latchCd = Math.max(0, v.latchCd - dt);
+    // swing the fangs toward the enemy
+    if (foe && foe.alive) {
+      const want = Math.atan2(foe.y - v.y, foe.x - v.x);
+      const d = angleDiff(v.face, want);
+      v.face += Math.sign(d) * Math.min(Math.abs(d), cfg.turnRate * dt);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -900,7 +1098,7 @@
         }
         continue;
       }
-      if (b.webImmune > 0) continue;
+      if (b.webImmune > 0 || b.latch) continue;   // a vampire mid-bite rides over webs
       for (const wb of webs) {
         if (wb.owner === b || wb.owner.side === b.side || wb.holding) continue;
         if (distToSegment(b.x, b.y, wb.x1, wb.y1, wb.x2, wb.y2) > b.r) continue;
@@ -926,21 +1124,27 @@
     roundTimer += dt;
     if (state === 'fight') {
       for (const b of balls) {
-        if (!b.alive || b.stuck > 0) continue;
+        if (!b.alive || b.stuck > 0 || b.latch) continue;
         settleSpeed(b, dt);
         b.x += b.vx * dt;
         b.y += b.vy * dt;
         bounceWalls(b);
+        b.spikeCd = Math.max(0, b.spikeCd - dt);
+        spikeCollisions(b);
       }
+      for (const b of balls) updateVampire(b, dt);
+      for (const sp of spikes) sp.t += dt;
       for (let i = 0; i < balls.length; i++)
         for (let j = i + 1; j < balls.length; j++) {
           const a = balls[i], b = balls[j];
           if (!a.alive || !b.alive) continue;
+          if ((a.latch && a.latch.target === b) || (b.latch && b.latch.target === a)) continue;
           axeClash(a, b);
           axeHits(a, b);
           axeHits(b, a);
           if (a.alive && b.alive) collideBalls(a, b);
         }
+      for (const b of balls) if (b.latch && !b.alive) b.latch = null;
 
       updateWebs(dt);
 
@@ -1022,6 +1226,75 @@
       pixLine(fx.x - len, fx.y + len - 2, fx.x + len, fx.y - len - 2);
     }
     ctx.globalAlpha = 1;
+  }
+
+  function drawSpikes() {
+    for (const sp of spikes) {
+      const g = Math.min(1, sp.t / 0.15);   // grows out of the wall
+      const tipX = sp.cx + sp.nx * sp.len * g, tipY = sp.cy + sp.ny * sp.len * g;
+      const tri = { x1: sp.x1, y1: sp.y1, x2: sp.x2, y2: sp.y2, px: tipX, py: tipY };
+      const minX = Math.floor(Math.min(sp.x1, sp.x2, tipX)), maxX = Math.ceil(Math.max(sp.x1, sp.x2, tipX));
+      const minY = Math.floor(Math.min(sp.y1, sp.y2, tipY)), maxY = Math.ceil(Math.max(sp.y1, sp.y2, tipY));
+      for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+          const px = x + 0.5, py = y + 0.5;
+          if (!insideTriangle(px, py, tri)) continue;
+          // shade: one face lit, the other in shadow, dark outline on the edges
+          const side = (px - sp.cx) * -sp.ny + (py - sp.cy) * sp.nx;
+          const e1 = closestOnSegment(px, py, sp.x1, sp.y1, tipX, tipY);
+          const e2 = closestOnSegment(px, py, sp.x2, sp.y2, tipX, tipY);
+          const edge = Math.min(Math.hypot(px - e1.x, py - e1.y), Math.hypot(px - e2.x, py - e2.y)) < 0.9;
+          ctx.fillStyle = edge ? '#1b1f25' : side > 0.5 ? '#e4e8ee' : side < -0.5 ? '#7b828c' : '#b4bbc5';
+          ctx.fillRect(x, y, 1, 1);
+        }
+      }
+      // red-tipped point
+      ctx.fillStyle = '#c0392b';
+      ctx.fillRect(Math.round(tipX - sp.nx * 1.5) - (sp.nx ? 0 : 0), Math.round(tipY - sp.ny * 1.5), 1, 1);
+    }
+  }
+
+  // Little steel spikes around the Spike Ball's rim.
+  function drawStuds(x, y, r, spin) {
+    for (let i = 0; i < 8; i++) {
+      const a = spin + i * Math.PI / 4;
+      const c = Math.cos(a), s = Math.sin(a);
+      for (let k = 0; k <= 4; k++) {
+        const w = k < 2 ? 1 : 0;
+        const px = x + c * (r - 1 + k), py = y + s * (r - 1 + k);
+        ctx.fillStyle = k === 4 ? '#ffffff' : '#c9ced6';
+        ctx.fillRect(Math.round(px - s * w), Math.round(py + c * w), 1, 1);
+        ctx.fillRect(Math.round(px), Math.round(py), 1, 1);
+      }
+    }
+  }
+
+  // Two fangs on the Vampire Ball's front.
+  function drawFangs(x, y, r, face, bloody) {
+    for (const off of [-0.32, 0.32]) {
+      const a = face + off;
+      const c = Math.cos(a), s = Math.sin(a);
+      for (let k = 0; k <= 7; k++) {
+        const w = k < 3 ? 1 : k < 5 ? 0.6 : 0;
+        const px = x + c * (r - 2 + k), py = y + s * (r - 2 + k);
+        ctx.fillStyle = k >= 6 && bloody ? '#c0203a' : k === 0 ? '#9aa1ab' : '#f4f1ea';
+        ctx.fillRect(Math.round(px), Math.round(py), 1, 1);
+        if (w) {
+          ctx.fillRect(Math.round(px - s * w), Math.round(py + c * w), 1, 1);
+          ctx.fillRect(Math.round(px + s * w), Math.round(py - c * w), 1, 1);
+        }
+      }
+    }
+  }
+
+  // Glowing red eyes that look where the vampire is facing.
+  function drawVampEyes(x, y, r, face) {
+    for (const off of [-0.6, 0.6]) {
+      const a = face + off;
+      const ex = Math.round(x + Math.cos(a) * (r - 5)), ey = Math.round(y + Math.sin(a) * (r - 5));
+      ctx.fillStyle = '#ff2a3a'; ctx.fillRect(ex - 1, ey - 1, 2, 2);
+      ctx.fillStyle = '#ffd0d4'; ctx.fillRect(ex - 1, ey - 1, 1, 1);
+    }
   }
 
   function drawWebs() {
@@ -1117,6 +1390,8 @@
   }
 
   function drawWeapon(b) {
+    if (b.type.studs && b.alive) drawStuds(b.x, b.y, b.r, performance.now() / 600);
+    if (b.type.fangs && b.alive) drawFangs(b.x, b.y, b.r, b.face, !!b.latch);
     if (b.type.legs && b.alive) {
       const moving = b.stuck > 0 ? 0 : Math.hypot(b.vx, b.vy);
       drawLegs(b.x, b.y, b.r, performance.now() / 1000 * (4 + moving * 0.12));
@@ -1156,6 +1431,7 @@
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     ctx.fillRect(Math.round(b.x - b.r + 2), Math.round(b.y + b.r - 1), b.r * 2 - 2, 2);
     ctx.drawImage(spr, x, y, w, h);
+    if (b.type.fangs) drawVampEyes(b.x, b.y, b.r, b.face);
     // side marker ring dot
     ctx.fillStyle = SIDES[b.side].color;
     ctx.fillRect(Math.round(b.x) - 1, Math.round(b.y - b.r - 3), 3, 2);
@@ -1208,7 +1484,11 @@
       drawAxe(icx, icy, alignRight ? Math.PI + 0.25 : -0.25);
     }
     if (t.legs) drawLegs(ix + t.radius, 16 + t.radius, t.radius, performance.now() / 250);
+    if (t.studs) drawStuds(ix + t.radius, 16 + t.radius, t.radius, performance.now() / 600);
+    const iconFace = alignRight ? Math.PI : 0;
+    if (t.fangs) drawFangs(ix + t.radius, 16 + t.radius, t.radius, iconFace, false);
     ctx.drawImage(t.sprite, ix, 16);
+    if (t.fangs) drawVampEyes(ix + t.radius, 16 + t.radius, t.radius, iconFace);
     // ball name
     const lbl = t.name;
     drawText(lbl, alignRight ? x - textWidth(lbl) : x, 44, '#ffffff');
@@ -1240,6 +1520,18 @@
     }
     let line = 67;
     if (t.weapon) line += 8;
+    if (t.spikes) {
+      const n = spikes.filter(sp => sp.owner === ball).length;
+      const txt = 'SPIKES ' + n + '/' + t.spikes.max;
+      drawText(txt, alignRight ? x - textWidth(txt) : x, line, '#e4e8ee');
+      line += 8;
+    }
+    if (t.vampire) {
+      const txt = ball.latch ? 'DRAINING ' + Math.max(0, ball.latch.t).toFixed(1) + 'S'
+        : ball.latchCd > 0 ? 'BITE IN ' + ball.latchCd.toFixed(1) + 'S' : 'BITE READY';
+      drawText(txt, alignRight ? x - textWidth(txt) : x, line, ball.latch ? '#ff4f6d' : '#d9a0b4');
+      line += 8;
+    }
     if (t.shield) {
       const txt = ball.shielded ? 'SHIELD -' + Math.round(t.shield.reduction * 100) + '% DMG' : 'SHIELD AT ' + t.shield.at + ' HP';
       drawText(txt, alignRight ? x - textWidth(txt) : x, line, ball.shielded ? '#7fc8ff' : '#9fb6dc');
@@ -1301,8 +1593,13 @@
   }
 
   function drawSelect() {
-    drawTextCentered('CHOOSE YOUR BALL', W / 2, PLAY.top + 4, '#ffffff', 1);
-    drawTextCentered('THE CPU PICKS AT RANDOM', W / 2, PLAY.top + 12, '#9fb6dc', 1);
+    // the pick screen covers the whole view
+    ctx.fillStyle = 'rgba(8,14,30,0.82)';
+    ctx.fillRect(6, 12, W - 12, H - 18);
+    ctx.fillStyle = '#30487a';
+    ctx.fillRect(6, 12, W - 12, 1); ctx.fillRect(6, H - 7, W - 12, 1);
+    drawTextCentered('CHOOSE YOUR BALL', W / 2, 18, '#ffffff', 1);
+    drawTextCentered('THE CPU PICKS AT RANDOM', W / 2, 26, '#9fb6dc', 1);
     cardRects().forEach((c, i) => {
       const t = BALL_TYPES[c.key];
       const hot = i === hoverCard;
@@ -1318,19 +1615,22 @@
         ctx.fillRect(c.x - 1, y - 1, 1, c.h + 2); ctx.fillRect(c.x + c.w, y - 1, 1, c.h + 2);
       }
       // ball (with weapon) on the left
-      const cx = c.x + 15, cy = y + Math.floor(c.h / 2);
+      const cx = c.x + 16, cy = y + Math.floor(c.h / 2);
       ctx.save();
-      ctx.beginPath(); ctx.rect(c.x, y, 30, c.h); ctx.clip();
+      ctx.beginPath(); ctx.rect(c.x, y, 32, c.h); ctx.clip();
       if (t.weapon) {
         const ang = -Math.PI * 0.75 - (hot ? performance.now() / 300 : 0);
         drawAxe(cx, cy, ang, 1, 0.5);
       }
       if (t.legs) drawLegs(cx, cy, t.radius, hot ? performance.now() / 120 : 0);
+      if (t.studs) drawStuds(cx, cy, t.radius, hot ? performance.now() / 300 : 0);
+      if (t.fangs) drawFangs(cx, cy, t.radius, 0, hot);
       ctx.drawImage(t.sprite, cx - t.radius, cy - t.radius);
+      if (t.fangs) drawVampEyes(cx, cy, t.radius, 0);
       ctx.restore();
       drawText(String(i + 1), c.x + 2, y + 3, hot ? '#ffd23f' : '#7f93b8');   // its number key
       // stats on the right
-      const tx = c.x + 29, ty = y + 3;
+      const tx = c.x + 33, ty = y + 5;
       drawText(t.short, tx, ty, '#ffffff');
       drawText('HP ' + t.hp, tx, ty + 8, '#5ee07a');
       const hit = t.rng ? t.rng.min + '-' + t.rng.max
@@ -1341,10 +1641,13 @@
       if (t.shield) drawText('SHLD ' + Math.round(t.shield.reduction * 100) + '%', tx, ty + 24, '#7fc8ff');
       if (t.execute) drawText('KILL <' + Math.round(t.execute.below * 100) + '%', tx, ty + 24, '#d6a8ff');
       if (t.rng) drawText('ROLL ' + t.rng.spinTime + 'S', tx, ty + 24, '#9fb6dc');
+      if (t.spikes) drawText('SPIKE ' + t.spikes.medium.damage + '-' + t.spikes.big.damage, tx, ty + 24, '#e4e8ee');
+      if (t.vampire) drawText('DRAIN ' + (t.vampire.drain / t.vampire.tickEvery) + '/S', tx, ty + 24, '#ff4f6d');
     });
   }
 
   function render() {
+    ctx.fillStyle = '#0b1a33'; ctx.fillRect(0, 0, W, H);   // clear last frame (also under screen shake)
     ctx.save();
     if (shake > 0) {
       const m = Math.ceil(shake * 20);
@@ -1361,6 +1664,7 @@
     if (state === 'aim') drawAimArrow();
     if (state !== 'select') {
       drawWebs();
+      drawSpikes();
       for (const b of balls) drawWeapon(b);
       for (const b of balls) drawBallWithFlash(b);
       for (const b of balls) drawWrap(b);

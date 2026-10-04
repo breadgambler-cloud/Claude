@@ -19,6 +19,8 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | RNG Ball | 100 | its last roll, 1–35 |
 | Execute Ball | 200 | 5–9 |
 | Tank Ball | 200 | 5 |
+| Spike Ball | 100 | 4, spikes 4 (medium) or 7 (big) |
+| Vampire Ball | 100 | 0, bites drain 8 HP per second |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
 When two axes meet they clang off each other and both reverse direction.
@@ -38,3 +40,10 @@ spot. When you face it, a purple tick on your health bar marks the 20% line.
 
 The Tank Ball is a grey armored ball. When its HP drops to 100, a shield comes up for the rest of the fight and halves
 all damage it takes. Its own damage also goes up 50%, from 5 to 8 per hit.
+
+Every time the Spike Ball hits a wall, a spike (medium or big) grows out of that spot. Enemies bounce off spikes and
+take damage. Each Spike Ball can have 10 spikes at a time.
+
+The Vampire Ball turns to face the enemy. If its fangs touch the enemy, it latches on for 2 seconds, draining 4 HP every
+half second and healing itself by the same amount. Biting is the only way it does damage. After a bite it needs
+1.5 seconds before it can bite again.
