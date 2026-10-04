@@ -143,7 +143,8 @@
       name: 'EXECUTE BALL',
       short: 'EXECUTE',
       hp: 200,
-      damage: 3,     // barely scratches...
+      damage: 5,
+      damageRange: [5, 9],   // barely scratches: each hit rolls 5-9...
       mass: 1,
       radius: 12,
       speed: 130,
@@ -151,6 +152,20 @@
       sigil: true,   // the purple crystal-star execute symbol
       // ...but once its hit leaves the enemy under this share of max HP, the enemy dies instantly.
       execute: { below: 0.2 },
+    },
+    tank: {
+      name: 'TANK BALL',
+      short: 'TANK',
+      hp: 200,
+      damage: 5,
+      mass: 1,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#c9ced6', base: '#8b929c', dark: '#5d646e', rim: '#2a2f37' },
+      armor: true,   // plated, riveted body with treads
+      // Once its HP falls to `at`, a shield comes up for the rest of the fight
+      // and cuts all damage it takes by `reduction`.
+      shield: { at: 100, reduction: 0.5 },
     },
   };
   const BALL_ORDER = Object.keys(BALL_TYPES);
@@ -310,6 +325,30 @@
         g.fillStyle = Math.abs(dy) < r - 3 ? '#ffd27a' : '#ff8a3d'; g.fillRect(cx, py, 1, 1);
       }
     }
+    if (type.armor) {
+      const inBall = (px, py) => (px - r) ** 2 + (py - r) ** 2 <= (r - 1.2) ** 2;
+      // treads across the bottom
+      for (let py = r + 6; py < d; py++) for (let px = 0; px < d; px++) {
+        if (!inBall(px, py)) continue;
+        g.fillStyle = (px + (py === r + 6 ? 0 : 1)) % 3 === 0 ? '#1b1f25' : '#3a4049';
+        g.fillRect(px, py, 1, 1);
+      }
+      // plate seams with rivets
+      for (const sy of [r - 6, r + 5]) {
+        for (let px = 0; px < d; px++) {
+          if (!inBall(px, sy)) continue;
+          g.fillStyle = '#3d434c'; g.fillRect(px, sy, 1, 1);
+          if (px % 4 === 1 && inBall(px, sy - 1)) { g.fillStyle = '#e4e8ee'; g.fillRect(px, sy - 1, 1, 1); }
+        }
+      }
+      // side plates
+      g.fillStyle = '#6c737d';
+      g.fillRect(2, r - 4, 2, 8); g.fillRect(d - 4, r - 4, 2, 8);
+      // hatch on top
+      g.fillStyle = '#2a2f37'; g.fillRect(r - 4, 2, 9, 4);
+      g.fillStyle = '#a5acb6'; g.fillRect(r - 3, 3, 7, 2);
+      g.fillStyle = '#e4e8ee'; g.fillRect(r - 3, 3, 3, 1);
+    }
     if (type.sigil) {
       // crystal star: a diamond and a square overlapped, faceted light to dark
       for (let py = 0; py < d; py++) {
@@ -431,6 +470,8 @@
       stuck: 0, stuckWeb: null, savedVx: 0, savedVy: 0, webImmune: 0,
       // rng
       rngValue: 0, rngSpin: 0,
+      // tank
+      shielded: false,
     };
     if (t.rng) rollRng(ball);   // the first roll starts at launch
     return ball;
@@ -555,6 +596,10 @@
   function hurt(ball, amount, attacker, color = '#ff6b6b') {
     if (!ball.alive) return;
     if (attacker.type.rng) color = amount >= 20 ? '#ffd23f' : '#ff6b6b';
+    if (ball.shielded) {
+      amount = Math.max(1, Math.round(amount * (1 - ball.type.shield.reduction)));
+      color = '#7fc8ff';
+    }
     if (!firstHitDone) {
       firstHitDone = true;
       popups.push({ x: attacker.x, y: attacker.y - attacker.r - 12, text: 'FIRST HIT!', t: -0.4, color: SIDES[attacker.side].color });
@@ -562,6 +607,12 @@
     ball.hp = Math.max(0, ball.hp - amount);
     ball.flash = 0.15;
     popups.push({ x: ball.x, y: ball.y - ball.r - 4, text: '-' + amount, t: 0, color });
+    const sh = ball.type.shield;
+    if (sh && !ball.shielded && ball.hp > 0 && ball.hp <= sh.at) {
+      ball.shielded = true;
+      popups.push({ x: ball.x, y: ball.y - ball.r - 14, text: 'SHIELD UP!', t: -0.2, color: '#7fc8ff' });
+      burst(ball.x, ball.y, { light: '#ffffff', base: '#7fc8ff', dark: '#3d8fe0' }, 18);
+    }
     const ex = attacker.type.execute;
     if (ex && ball.hp > 0 && ball.hp < ball.maxHp * ex.below) {
       // EXECUTE: anything left under the threshold dies on the spot
@@ -580,6 +631,8 @@
   // Damage this ball deals on contact. The RNG Ball deals nothing while its
   // number is still rolling; once it has landed, the hit spends it.
   function dealt(ball) {
+    const range = ball.type.damageRange;
+    if (range) return randInt(range[0], range[1]);
     if (!ball.type.rng) return ball.type.damage;
     if (ball.rngSpin > 0) return 0;
     const v = ball.rngValue;
@@ -1008,6 +1061,26 @@
     }
   }
 
+  // Shimmering hex-dotted bubble around a shielded ball.
+  function drawShield(b) {
+    if (!b.alive || !b.shielded) return;
+    const R = b.r + 4;
+    const pulse = 0.8 + Math.sin(performance.now() / 180) * 0.2;
+    for (let i = 0; i < 48; i++) {
+      const a = i / 48 * Math.PI * 2;
+      ctx.globalAlpha = pulse * (i % 4 === 0 ? 1 : 0.6);
+      ctx.fillStyle = i % 4 === 0 ? '#ffffff' : '#7fc8ff';
+      ctx.fillRect(Math.round(b.x + Math.cos(a) * R), Math.round(b.y + Math.sin(a) * R), 1, 1);
+    }
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = '#7fc8ff';
+    for (let dy = -R; dy <= R; dy++) {
+      const w = Math.floor(Math.sqrt(R * R - dy * dy));
+      ctx.fillRect(Math.round(b.x - w), Math.round(b.y + dy), w * 2 + 1, 1);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // Web wrapped around a stuck ball.
   function drawWrap(b) {
     if (!b.alive || b.stuck <= 0) return;
@@ -1142,6 +1215,11 @@
     ctx.fillRect(bx, by, Math.round(bw * pct), 4);
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
     ctx.fillRect(bx, by, Math.round(bw * pct), 1);
+    // a tank marks where its shield comes up
+    if (t.shield && !ball.shielded) {
+      const sx = bx + Math.round(bw * t.shield.at / ball.maxHp);
+      ctx.fillStyle = '#7fc8ff'; ctx.fillRect(sx, by - 2, 1, 8);
+    }
     // facing an Execute Ball: mark the kill line on this bar
     const foe = balls[1 - ball.side];
     if (foe && foe.type.execute) {
@@ -1156,6 +1234,11 @@
     }
     let line = 67;
     if (t.weapon) line += 8;
+    if (t.shield) {
+      const txt = ball.shielded ? 'SHIELD -' + Math.round(t.shield.reduction * 100) + '% DMG' : 'SHIELD AT ' + t.shield.at + ' HP';
+      drawText(txt, alignRight ? x - textWidth(txt) : x, line, ball.shielded ? '#7fc8ff' : '#9fb6dc');
+      line += 8;
+    }
     if (t.execute) {
       const txt = 'EXECUTE <' + Math.round(t.execute.below * 100) + '%';
       drawText(txt, alignRight ? x - textWidth(txt) : x, line, '#d6a8ff');
@@ -1239,10 +1322,12 @@
       const tx = c.x + 29, ty = y + 3;
       drawText(t.short, tx, ty, '#ffffff');
       drawText('HP ' + t.hp, tx, ty + 8, '#5ee07a');
-      const hit = t.rng ? t.rng.min + '-' + t.rng.max : String(t.damage);
+      const hit = t.rng ? t.rng.min + '-' + t.rng.max
+        : t.damageRange ? t.damageRange[0] + '-' + t.damageRange[1] : String(t.damage);
       drawText('HIT ' + hit, tx, ty + 16, t.rng ? '#ffd23f' : '#ff8a8a');
       if (t.weapon) drawText('AXE ' + t.weapon.damage, tx, ty + 24, '#ffb03b');
       if (t.web) drawText('WEB ' + t.web.stuckTime + 'S', tx, ty + 24, '#e6e9f2');
+      if (t.shield) drawText('SHLD ' + Math.round(t.shield.reduction * 100) + '%', tx, ty + 24, '#7fc8ff');
       if (t.execute) drawText('KILL <' + Math.round(t.execute.below * 100) + '%', tx, ty + 24, '#d6a8ff');
       if (t.rng) drawText('ROLL ' + t.rng.spinTime + 'S', tx, ty + 24, '#9fb6dc');
     });
@@ -1268,6 +1353,7 @@
       for (const b of balls) drawWeapon(b);
       for (const b of balls) drawBallWithFlash(b);
       for (const b of balls) drawWrap(b);
+      for (const b of balls) drawShield(b);
       drawExecuteFx();
     }
     for (const p of particles) {

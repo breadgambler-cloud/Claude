@@ -17,7 +17,8 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | Axe Ball | 100 | 1 from the ball, 12 from the axe |
 | Spider Ball | 100 | 8 |
 | RNG Ball | 100 | its last roll, 1–35 |
-| Execute Ball | 200 | 3 |
+| Execute Ball | 200 | 5–9 |
+| Tank Ball | 200 | 5 |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
 When two axes meet they clang off each other and both reverse direction.
@@ -34,3 +35,6 @@ number shows in a box above the ball.
 
 The Execute Ball barely does damage, but if one of its hits leaves the enemy under 20% HP, the enemy is executed on the
 spot. When you face it, a purple tick on your health bar marks the 20% line.
+
+The Tank Ball is a grey armored ball. When its HP drops to 100, a shield comes up for the rest of the fight and halves
+all damage it takes.
