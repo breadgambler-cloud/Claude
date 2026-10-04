@@ -66,18 +66,40 @@
 
   // ---------------------------------------------------------------------------
   // Ball types. Add new balls here: each one is just stats + colors.
-  // On contact, each ball deals its `damage` to the other ball.
+  // On contact, each ball deals its `damage` (rolled +/- `roll`) to the other.
+  // A ball with a `weapon` also deals that weapon's damage when it lands.
   // ---------------------------------------------------------------------------
   const BALL_TYPES = {
     normal: {
       name: 'NORMAL BALL',
       hp: 100,
-      damage: 10,   // base damage per hit (rolled +/- 2)
+      damage: 10,
+      roll: 2,
       radius: 12,
       speed: 130,    // pixels per second
       colors: { light: '#f4f7fb', base: '#c9d2de', dark: '#8a96a8', rim: '#4d586b' },
     },
+    axe: {
+      name: 'AXE BALL',
+      hp: 100,
+      damage: 1,     // the ball body barely hurts; the axe does the real damage
+      roll: 0,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#a3aab6', base: '#6e7684', dark: '#474e5b', rim: '#262b35' },
+      seam: true,    // glowing orange crack down the middle
+      weapon: {
+        kind: 'axe',
+        damage: 12,
+        roll: 2,
+        spinStart: 3,      // radians per second at launch
+        spinAccel: 1.1,    // extra radians per second, every second it stays alive
+        spinMax: 30,
+        hitCooldown: 0.3,  // seconds before the axe can hit the same ball again
+      },
+    },
   };
+  const BALL_ORDER = Object.keys(BALL_TYPES);
 
   // ---------------------------------------------------------------------------
   // Tiny 3x5 pixel font.
@@ -221,6 +243,19 @@
         g.fillRect(px, py, 1, 1);
       }
     }
+    if (type.seam) {
+      // molten crack: bright core, hot orange, dim glow on the sides
+      for (let py = 0; py < d; py++) {
+        const dy = py - r;
+        const span = Math.sqrt(Math.max(0, r * r - dy * dy));
+        if (span < 2) continue;
+        const wob = Math.round(Math.sin(py * 0.9) * 0.6);
+        const cx = r + wob;
+        g.fillStyle = '#7a2a12'; g.fillRect(cx - 2, py, 1, 1); g.fillRect(cx + 2, py, 1, 1);
+        g.fillStyle = '#ff5a1f'; g.fillRect(cx - 1, py, 1, 1); g.fillRect(cx + 1, py, 1, 1);
+        g.fillStyle = Math.abs(dy) < r - 3 ? '#ffd27a' : '#ff8a3d'; g.fillRect(cx, py, 1, 1);
+      }
+    }
     // specular highlight
     g.fillStyle = '#ffffff';
     g.fillRect(r - 6, r - 8, 3, 2);
@@ -228,6 +263,44 @@
     return c;
   }
   for (const key in BALL_TYPES) BALL_TYPES[key].sprite = makeBallSprite(BALL_TYPES[key]);
+
+  // Axe sprite, drawn pointing right. The pivot (ball center) is at (0, AXE_PIVOT_Y).
+  const AXE_ART = [
+    '                         oooooooo   ',
+    '                        oeeeeeeeeo  ',
+    '                       oeSSSSSSSSeo ',
+    '                      oeSSssssssSSeo',
+    '                      oeSsssssssssko',
+    '                       oSssssssssko ',
+    '                        oSssssssko  ',
+    '                         oSsssssko  ',
+    '                          oSssko    ',
+    '                          oSssko    ',
+    '                         ooSssko    ',
+    '      oooooooooooooooooooooSsskoooo ',
+    '      oWWggWWggWWggWWWWWWWoSsskoWWo ',
+    '      oddggddggddggddddddddokssskodo',
+    '      oooooooooooooooooooooookkkoooo ',
+    '                          ooooo     ',
+  ];
+  const AXE_COLORS = {
+    o: '#14101c', e: '#ffffff', S: '#dfe6ef', s: '#a4afbf', k: '#5f6a7d',
+    W: '#c28a55', d: '#6e4524', g: '#b8392b',
+  };
+  const AXE_PIVOT_Y = 12.5;
+  // Hit shapes in axe space (x along the handle from the ball center, y across it).
+  const AXE_HANDLE = { x0: 12, x1: 34, half: 2 };                // the shaft
+  const AXE_HEAD = { x0: 22, x1: 36, y0: -12.5, y1: 3 };          // the head and blade
+  const AXE_BLADE = { x: 30, y: -7 };                              // blade center, for clashes and trails
+  const axeSprite = document.createElement('canvas');
+  axeSprite.width = AXE_ART[0].length;
+  axeSprite.height = AXE_ART.length;
+  (function paintAxe() {
+    const g = axeSprite.getContext('2d');
+    AXE_ART.forEach((row, y) => [...row].forEach((ch, x) => {
+      if (AXE_COLORS[ch]) { g.fillStyle = AXE_COLORS[ch]; g.fillRect(x, y, 1, 1); }
+    }));
+  })();
 
   // ---------------------------------------------------------------------------
   // Game state
@@ -238,6 +311,7 @@
   ];
 
   let balls, popups, particles, state, winner, shake, aim, roundTimer;
+  const picks = ['axe', 'normal'];   // ball type for YOU and CPU
 
   function makeBall(typeKey, x, y, side) {
     const t = BALL_TYPES[typeKey];
@@ -245,15 +319,25 @@
       type: t, side, x, y, vx: 0, vy: 0,
       hp: t.hp, maxHp: t.hp, r: t.radius,
       flash: 0, squash: 0, alive: true,
+      // weapon state
+      angle: side === 0 ? -0.6 : Math.PI - 0.6,
+      spin: t.weapon ? t.weapon.spinStart : 0,
+      weaponCd: 0,
     };
+  }
+
+  function cyclePick(side) {
+    const i = BALL_ORDER.indexOf(picks[side]);
+    picks[side] = BALL_ORDER[(i + 1) % BALL_ORDER.length];
+    reset();
   }
 
   function reset() {
     const cx = (PLAY.left + PLAY.right) / 2;
     const cy = (PLAY.top + PLAY.bottom) / 2;
     balls = [
-      makeBall('normal', cx - 30, cy + 8, 0),
-      makeBall('normal', cx + 30, cy - 22, 1),
+      makeBall(picks[0], cx - 30, cy + 8, 0),
+      makeBall(picks[1], cx + 30, cy - 22, 1),
     ];
     popups = [];
     particles = [];
@@ -287,26 +371,42 @@
     };
   }
   canvas.addEventListener('pointermove', e => { if (state === 'aim') aim = toGame(e); });
+  // The side panels (outside the arena) switch which ball each side uses.
+  function panelAt(p) {
+    if (p.y > 82) return -1;
+    if (p.x < ARENA.x - 2) return 0;
+    if (p.x > ARENA.x + ARENA.size + 2) return 1;
+    return -1;
+  }
   canvas.addEventListener('pointerdown', e => {
-    if (state === 'aim') { aim = toGame(e); launch(); }
+    const p = toGame(e);
+    if (state === 'aim') {
+      const side = panelAt(p);
+      if (side >= 0) cyclePick(side);
+      else { aim = p; launch(); }
+    }
     else if (state === 'over' && roundTimer > 0.6) reset();
   });
   addEventListener('keydown', e => {
     if (e.key === 'r' || e.key === 'R') reset();
+    if (state === 'aim' && e.key === '1') cyclePick(0);
+    if (state === 'aim' && e.key === '2') cyclePick(1);
     if ((e.key === ' ' || e.key === 'Enter') && state === 'aim') launch();
   });
 
   // ---------------------------------------------------------------------------
   // Combat
   // ---------------------------------------------------------------------------
-  function rollDamage(attacker) {
-    return attacker.type.damage + Math.floor(Math.random() * 5) - 2;
+  function rollDamage(stats) {
+    const roll = stats.roll || 0;
+    return stats.damage + Math.floor(Math.random() * (roll * 2 + 1)) - roll;
   }
 
-  function hurt(ball, amount) {
+  function hurt(ball, amount, color = '#ff6b6b') {
+    if (!ball.alive) return;
     ball.hp = Math.max(0, ball.hp - amount);
     ball.flash = 0.15;
-    popups.push({ x: ball.x, y: ball.y - ball.r - 4, text: '-' + amount, t: 0, color: '#ff6b6b' });
+    popups.push({ x: ball.x, y: ball.y - ball.r - 4, text: '-' + amount, t: 0, color });
     if (ball.hp <= 0) {
       ball.alive = false;
       burst(ball.x, ball.y, ball.type.colors, 26);
@@ -348,13 +448,72 @@
 
     // both balls hurt each other
     const hx = a.x + nx * a.r, hy = a.y + ny * a.r;
-    const dmgToB = rollDamage(a);
-    const dmgToA = rollDamage(b);
+    const dmgToB = rollDamage(a.type);
+    const dmgToA = rollDamage(b.type);
     hurt(b, dmgToB);
     hurt(a, dmgToA);
     a.squash = b.squash = 0.12;
     shake = 0.12;
     burst(hx, hy, { light: '#ffffff', base: '#ffe28a', dark: '#ffb347' }, 8);
+  }
+
+  // Axe space -> screen space.
+  function axeToWorld(b, lx, ly) {
+    const c = Math.cos(b.angle), s = Math.sin(b.angle);
+    return { x: b.x + lx * c - ly * s, y: b.y + lx * s + ly * c };
+  }
+  function bladePos(b) { return axeToWorld(b, AXE_BLADE.x, AXE_BLADE.y); }
+
+  // Does the axe of `a` touch ball `b`? Returns the contact point or null.
+  function axeContact(a, b) {
+    const c = Math.cos(a.angle), s = Math.sin(a.angle);
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const lx = dx * c + dy * s, ly = -dx * s + dy * c;   // b's center in axe space
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    // head: closest point on its box
+    const hx = clamp(lx, AXE_HEAD.x0, AXE_HEAD.x1), hy = clamp(ly, AXE_HEAD.y0, AXE_HEAD.y1);
+    if (Math.hypot(lx - hx, ly - hy) <= b.r) return axeToWorld(a, hx, hy);
+    // shaft: closest point on the handle line
+    const sx = clamp(lx, AXE_HANDLE.x0, AXE_HANDLE.x1);
+    if (Math.hypot(lx - sx, ly) <= b.r + AXE_HANDLE.half) return axeToWorld(a, sx, 0);
+    return null;
+  }
+
+  function updateWeapon(b, dt) {
+    const w = b.type.weapon;
+    if (!w || !b.alive) return;
+    if (state === 'fight') b.spin = Math.min(w.spinMax, b.spin + w.spinAccel * dt);
+    b.angle -= b.spin * dt;   // counter-clockwise, so the blade's face leads
+    b.weaponCd = Math.max(0, b.weaponCd - dt);
+  }
+
+  function axeHits(a, b) {
+    const w = a.type.weapon;
+    if (!w || !a.alive || !b.alive || a.weaponCd > 0) return;
+    const blade = axeContact(a, b);
+    if (!blade) return;
+
+    a.weaponCd = w.hitCooldown;
+    hurt(b, rollDamage(w), '#ffb03b');
+    // knock the victim away from the attacker
+    const kx = b.x - a.x, ky = b.y - a.y, kl = Math.hypot(kx, ky) || 1;
+    b.vx = kx / kl; b.vy = ky / kl;
+    keepSpeed(b);
+    b.squash = 0.14;
+    shake = 0.16;
+    burst(blade.x, blade.y, { light: '#ffffff', base: '#ffd27a', dark: '#ff7a2f' }, 12);
+  }
+
+  // Two axes meeting clang off each other: no damage, both spin the other way.
+  function axeClash(a, b) {
+    if (!a.type.weapon || !b.type.weapon || !a.alive || !b.alive) return;
+    if (a.weaponCd > 0 || b.weaponCd > 0) return;
+    const pa = bladePos(a), pb = bladePos(b);
+    if (Math.hypot(pa.x - pb.x, pa.y - pb.y) > 14) return;
+    a.spin = -a.spin; b.spin = -b.spin;
+    a.weaponCd = b.weaponCd = 0.25;
+    shake = 0.1;
+    burst((pa.x + pb.x) / 2, (pa.y + pb.y) / 2, { light: '#ffffff', base: '#cfe8ff', dark: '#7fb2ff' }, 10);
   }
 
   function keepSpeed(ball) {
@@ -402,8 +561,14 @@
         bounceWalls(b);
       }
       for (let i = 0; i < balls.length; i++)
-        for (let j = i + 1; j < balls.length; j++)
-          if (balls[i].alive && balls[j].alive) collideBalls(balls[i], balls[j]);
+        for (let j = i + 1; j < balls.length; j++) {
+          const a = balls[i], b = balls[j];
+          if (!a.alive || !b.alive) continue;
+          axeClash(a, b);
+          axeHits(a, b);
+          axeHits(b, a);
+          collideBalls(a, b);
+        }
 
       const alive = balls.filter(b => b.alive);
       if (alive.length <= 1) {
@@ -413,6 +578,7 @@
       }
     }
     for (const b of balls) {
+      updateWeapon(b, dt);
       b.flash = Math.max(0, b.flash - dt);
       b.squash = Math.max(0, b.squash - dt);
     }
@@ -429,6 +595,41 @@
   // ---------------------------------------------------------------------------
   // Draw
   // ---------------------------------------------------------------------------
+  function drawAxe(x, y, angle, alpha = 1) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(Math.round(x), Math.round(y));
+    ctx.rotate(angle);
+    ctx.drawImage(axeSprite, 0, -Math.round(AXE_PIVOT_Y));
+    ctx.restore();
+  }
+
+  function drawWeapon(b) {
+    if (!b.type.weapon || !b.alive) return;
+    const speed = Math.abs(b.spin);
+    // swoosh trail behind the blade once it gets going
+    if (speed > 5) {
+      const len = Math.min(2.6, speed * 0.09);
+      const dir = Math.sign(b.spin);
+      const reach = Math.hypot(AXE_BLADE.x + 4, AXE_BLADE.y);
+      const base = b.angle + Math.atan2(AXE_BLADE.y - 3, AXE_BLADE.x + 4);
+      for (let i = 0; i < 40; i++) {
+        const t = i / 40;
+        const a = base + dir * t * len;
+        ctx.globalAlpha = (1 - t) * 0.55;
+        ctx.fillStyle = speed > 14 ? '#ffd27a' : '#e8f1ff';
+        for (let k = 0; k < 3; k++) {
+          const rr = reach - k * 3;
+          ctx.fillRect(Math.round(b.x + Math.cos(a) * rr), Math.round(b.y + Math.sin(a) * rr), 1, 1);
+        }
+      }
+      ctx.globalAlpha = 1;
+      // ghost axe a little behind the real one
+      drawAxe(b.x, b.y, b.angle + Math.sign(b.spin) * Math.min(0.5, speed * 0.02), 0.25);
+    }
+    drawAxe(b.x, b.y, b.angle);
+  }
+
   function drawBall(b) {
     if (!b.alive) return;
     const spr = b.type.sprite;
@@ -472,14 +673,18 @@
     const t = ball.type;
     const nameX = alignRight ? x - textWidth(side.label) : x;
     drawText(side.label, nameX, 8, side.color);
-    // ball icon
+    // ball icon (with its weapon)
     const ix = alignRight ? x - t.sprite.width : x;
+    if (t.weapon) {
+      const icx = ix + t.radius, icy = 16 + t.radius;
+      drawAxe(icx, icy, alignRight ? Math.PI + 0.25 : -0.25);
+    }
     ctx.drawImage(t.sprite, ix, 16);
     // ball name
     const lbl = t.name;
-    drawText(lbl, alignRight ? x - textWidth(lbl) : x, 40, '#ffffff');
+    drawText(lbl, alignRight ? x - textWidth(lbl) : x, 44, '#ffffff');
     // hp bar
-    const bw = 60, bx = alignRight ? x - bw : x, by = 48;
+    const bw = 60, bx = alignRight ? x - bw : x, by = 52;
     ctx.fillStyle = '#0a1020'; ctx.fillRect(bx - 1, by - 1, bw + 2, 6);
     ctx.fillStyle = '#3a2030'; ctx.fillRect(bx, by, bw, 4);
     const pct = ball.hp / ball.maxHp;
@@ -488,7 +693,15 @@
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
     ctx.fillRect(bx, by, Math.round(bw * pct), 1);
     const hpText = Math.ceil(ball.hp) + '/' + ball.maxHp;
-    drawText(hpText, alignRight ? x - textWidth(hpText) : x, 55, '#cfe0ff');
+    drawText(hpText, alignRight ? x - textWidth(hpText) : x, 59, '#cfe0ff');
+    if (t.weapon) {
+      const mult = 'AXE SPEED X' + (Math.abs(ball.spin) / t.weapon.spinStart).toFixed(1);
+      drawText(mult, alignRight ? x - textWidth(mult) : x, 67, '#ffb03b');
+    }
+    if (state === 'aim') {
+      const hint = 'CLICK TO SWAP';
+      drawText(hint, alignRight ? x - textWidth(hint) : x, 76, '#9fb6dc');
+    }
   }
 
   function drawAimArrow() {
@@ -530,6 +743,7 @@
     ctx.rect(PLAY.left, PLAY.top, PLAY.right - PLAY.left, PLAY.bottom - PLAY.top);
     ctx.clip();
     if (state === 'aim') drawAimArrow();
+    for (const b of balls) drawWeapon(b);
     for (const b of balls) drawBallWithFlash(b);
     for (const p of particles) {
       ctx.globalAlpha = 1 - p.t / p.life;
