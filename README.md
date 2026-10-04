@@ -16,6 +16,7 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | Normal Ball | 100 | 10 |
 | Axe Ball | 100 | 1 from the ball, 12 from the axe |
 | Spider Ball | 100 | 8 |
+| RNG Ball | 100 | its last roll, 1–35 |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
 When two axes meet they clang off each other and both reverse direction.
@@ -25,3 +26,6 @@ between the two spots. An enemy that touches a set web is stuck in place for 3 s
 snaps. Each Spider Ball can have 2 webs out at a time, and each web lasts 10 seconds.
 
 New balls go in the `BALL_TYPES` table in `index.html`.
+
+The RNG Ball rolls a number from 1 to 35 every 3 seconds. Its next hit deals that much damage, and landing a hit
+uses up the number and rolls a new one. The current number shows in a box above the ball.

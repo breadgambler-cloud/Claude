@@ -120,6 +120,25 @@
         max: 2,         // webs on the field at once (oldest goes first)
       },
     },
+    rng: {
+      name: 'RNG BALL',
+      short: 'RNG',
+      hp: 100,
+      damage: 0,     // unused: damage comes from the roll below
+      mass: 1,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#7fe0a2', base: '#2f9e5a', dark: '#1f6e3e', rim: '#0e3a20' },
+      pips: true,    // dice pips
+      // Every so often it rolls a number; its next hit deals that much damage.
+      // Landing a hit uses up the number and rolls a fresh one.
+      rng: {
+        min: 1,
+        max: 35,
+        every: 3,       // seconds between rolls
+        spinTime: 0.5,  // how long the number visibly spins before it lands
+      },
+    },
   };
   const BALL_ORDER = Object.keys(BALL_TYPES);
 
@@ -278,6 +297,14 @@
         g.fillStyle = Math.abs(dy) < r - 3 ? '#ffd27a' : '#ff8a3d'; g.fillRect(cx, py, 1, 1);
       }
     }
+    if (type.pips) {
+      // dice pips around the edge (the middle is left clear for the HP number)
+      const pips = [[-7, -6], [6, -6], [-8, 2], [7, 2], [-3, 7], [3, 7], [0, -9]];
+      for (const [px, py] of pips) {
+        g.fillStyle = '#0e3a20'; g.fillRect(r + px, r + py + 1, 2, 2);
+        g.fillStyle = '#ffffff'; g.fillRect(r + px, r + py, 2, 2);
+      }
+    }
     if (type.eyes) {
       // hourglass on the belly
       g.fillStyle = '#d4202c';
@@ -351,7 +378,7 @@
 
   function makeBall(typeKey, x, y, side) {
     const t = BALL_TYPES[typeKey];
-    return {
+    const ball = {
       type: t, side, x, y, vx: 0, vy: 0,
       hp: t.hp, maxHp: t.hp, r: t.radius,
       flash: 0, squash: 0, alive: true,
@@ -363,8 +390,17 @@
       strand: null,       // {x, y, wall} where the current web strand is anchored
       // being caught in a web
       stuck: 0, stuckWeb: null, savedVx: 0, savedVy: 0, webImmune: 0,
+      // rng
+      rngValue: 0, rngTimer: 0, rngSpin: 0,
     };
+    if (t.rng) {
+      ball.rngValue = randInt(t.rng.min, t.rng.max);
+      ball.rngTimer = t.rng.every;
+    }
+    return ball;
   }
+
+  function randInt(min, max) { return min + Math.floor(Math.random() * (max - min + 1)); }
 
   // Pick screen: the player chooses, then the CPU picks at random.
   function startSelect() {
@@ -380,15 +416,17 @@
     reset();
   }
 
-  // Card rectangles on the pick screen, laid out in a row inside the arena.
+  // Card rectangles on the pick screen: a two-column grid inside the arena.
   function cardRects() {
-    const n = BALL_ORDER.length, gap = 4;
-    const w = Math.min(60, Math.floor((PLAY.right - PLAY.left - 8 - gap * (n - 1)) / n));
-    const h = 84;
-    const total = n * w + (n - 1) * gap;
+    const cols = 2, gap = 4, w = 64, h = 50;
+    const total = cols * w + (cols - 1) * gap;
     const x0 = Math.round((PLAY.left + PLAY.right - total) / 2);
-    const y = PLAY.top + 30;
-    return BALL_ORDER.map((key, i) => ({ key, x: x0 + i * (w + gap), y, w, h }));
+    const y0 = PLAY.top + 28;
+    return BALL_ORDER.map((key, i) => ({
+      key, w, h,
+      x: x0 + (i % cols) * (w + gap),
+      y: y0 + Math.floor(i / cols) * (h + gap),
+    }));
   }
 
   function cardAt(p) {
@@ -474,6 +512,7 @@
   // ---------------------------------------------------------------------------
   function hurt(ball, amount, attacker, color = '#ff6b6b') {
     if (!ball.alive) return;
+    if (attacker.type.rng) color = amount >= 20 ? '#ffd23f' : '#ff6b6b';
     if (!firstHitDone) {
       firstHitDone = true;
       popups.push({ x: attacker.x, y: attacker.y - attacker.r - 12, text: 'FIRST HIT!', t: -0.4, color: SIDES[attacker.side].color });
@@ -485,6 +524,38 @@
       ball.alive = false;
       burst(ball.x, ball.y, ball.type.colors, 26);
     }
+  }
+
+  // Damage this ball deals on contact. The RNG Ball spends its rolled number.
+  function dealt(ball) {
+    if (!ball.type.rng) return ball.type.damage;
+    const v = ball.rngValue;
+    rollRng(ball);
+    return v;
+  }
+
+  function rollRng(ball) {
+    const r = ball.type.rng;
+    ball.rngValue = randInt(r.min, r.max);
+    ball.rngTimer = r.every;
+    ball.rngSpin = r.spinTime;
+  }
+
+  function rngColor(v) {
+    return v >= 30 ? '#ff5a3d' : v >= 20 ? '#ffd23f' : v >= 10 ? '#ffffff' : '#9fb6dc';
+  }
+
+  function updateRng(ball, dt) {
+    if (!ball.type.rng || !ball.alive) return;
+    if (ball.rngSpin > 0) {
+      ball.rngSpin -= dt;
+      if (ball.rngSpin <= 0 && ball.rngValue >= 30) {
+        popups.push({ x: ball.x, y: ball.y - ball.r - 18, text: 'LUCKY!', t: 0, color: '#ff5a3d' });
+      }
+    }
+    if (state !== 'fight') return;
+    ball.rngTimer -= dt;
+    if (ball.rngTimer <= 0) rollRng(ball);
   }
 
   function burst(x, y, colors, n) {
@@ -537,8 +608,8 @@
     // the other one out, it never gets to hit back.
     const hx = a.x + nx * a.r, hy = a.y + ny * a.r;
     const [first, second] = driveA >= driveB ? [a, b] : [b, a];
-    hurt(second, first.type.damage, first);
-    if (second.alive) hurt(first, second.type.damage, second);
+    hurt(second, dealt(first), first);
+    if (second.alive) hurt(first, dealt(second), second);
     a.squash = b.squash = 0.12;
     shake = 0.12;
     burst(hx, hy, { light: '#ffffff', base: '#ffe28a', dark: '#ffb347' }, 8);
@@ -763,6 +834,7 @@
     }
     for (const b of balls) {
       updateWeapon(b, dt);
+      updateRng(b, dt);
       b.flash = Math.max(0, b.flash - dt);
       b.squash = Math.max(0, b.squash - dt);
     }
@@ -928,6 +1000,18 @@
     ctx.fillRect(Math.round(b.x) - 1, Math.round(b.y - b.r - 3), 3, 2);
     // HP number in the middle of the ball
     drawTextCentered(Math.ceil(b.hp), b.x + 1, Math.round(b.y) - 2, '#ffffff', 1, '#1a2233');
+    if (b.type.rng) drawRngBadge(b);
+  }
+
+  // The rolled number, in a little gold-trimmed box above the ball.
+  function drawRngBadge(b) {
+    const spinning = b.rngSpin > 0;
+    const shown = spinning ? randInt(b.type.rng.min, b.type.rng.max) : b.rngValue;
+    const bx = Math.round(b.x) - 7, by = Math.round(b.y - b.r) - 14;
+    ctx.fillStyle = '#0a1020'; ctx.fillRect(bx - 1, by - 1, 16, 11);
+    ctx.fillStyle = spinning ? '#ffffff' : '#d9a520'; ctx.fillRect(bx, by, 14, 9);
+    ctx.fillStyle = '#1a1430'; ctx.fillRect(bx + 1, by + 1, 12, 7);
+    drawTextCentered(shown, bx + 7.5, by + 2, spinning ? '#ffffff' : rngColor(shown), 1, null);
   }
 
   // Flash tint needs its own buffer so it only tints the ball.
@@ -984,6 +1068,11 @@
     }
     let line = 67;
     if (t.weapon) line += 8;
+    if (t.rng) {
+      const txt = ball.rngSpin > 0 ? 'ROLLING...' : 'NEXT HIT ' + ball.rngValue;
+      drawText(txt, alignRight ? x - textWidth(txt) : x, line, ball.rngSpin > 0 ? '#ffffff' : rngColor(ball.rngValue));
+      line += 8;
+    }
     if (t.web) {
       const mine = webs ? webs.filter(wb => wb.owner === ball).length : 0;
       const webText = 'WEBS ' + mine + '/' + t.web.max + (ball.strand ? ' +SPINNING' : '');
@@ -1041,24 +1130,27 @@
         ctx.fillRect(c.x - 1, y - 1, c.w + 2, 1); ctx.fillRect(c.x - 1, y + c.h, c.w + 2, 1);
         ctx.fillRect(c.x - 1, y - 1, 1, c.h + 2); ctx.fillRect(c.x + c.w, y - 1, 1, c.h + 2);
       }
-      // ball (with weapon)
-      const cx = c.x + Math.floor(c.w / 2), cy = y + 22;
+      // ball (with weapon) on the left
+      const cx = c.x + 15, cy = y + 19;
       ctx.save();
-      ctx.beginPath(); ctx.rect(c.x, y, c.w, c.h); ctx.clip();
+      ctx.beginPath(); ctx.rect(c.x, y, 30, c.h); ctx.clip();
       if (t.weapon) {
         const ang = -Math.PI * 0.75 - (hot ? performance.now() / 300 : 0);
-        drawAxe(cx, cy, ang, 1, 0.6);
+        drawAxe(cx, cy, ang, 1, 0.5);
       }
       if (t.legs) drawLegs(cx, cy, t.radius, hot ? performance.now() / 120 : 0);
       ctx.drawImage(t.sprite, cx - t.radius, cy - t.radius);
       ctx.restore();
-      // stats
-      drawTextCentered(t.short, cx, y + 42, '#ffffff');
-      drawText('HP ' + t.hp, c.x + 3, y + 52, '#5ee07a');
-      drawText('HIT ' + t.damage, c.x + 3, y + 60, '#ff8a8a');
-      if (t.weapon) drawText('AXE ' + t.weapon.damage, c.x + 3, y + 68, '#ffb03b');
-      if (t.web) drawText('WEB ' + t.web.stuckTime + 'S', c.x + 3, y + 68, '#e6e9f2');
-      drawTextCentered('KEY ' + (i + 1), cx, y + c.h - 8, hot ? '#ffd23f' : '#7f93b8');
+      drawTextCentered('KEY ' + (i + 1), cx, y + c.h - 9, hot ? '#ffd23f' : '#7f93b8');
+      // stats on the right
+      const tx = c.x + 31;
+      drawText(t.short, tx, y + 5, '#ffffff');
+      drawText('HP ' + t.hp, tx, y + 15, '#5ee07a');
+      const hit = t.rng ? t.rng.min + '-' + t.rng.max : String(t.damage);
+      drawText('HIT ' + hit, tx, y + 23, t.rng ? '#ffd23f' : '#ff8a8a');
+      if (t.weapon) drawText('AXE ' + t.weapon.damage, tx, y + 31, '#ffb03b');
+      if (t.web) drawText('WEB ' + t.web.stuckTime + 'S', tx, y + 31, '#e6e9f2');
+      if (t.rng) drawText('EVERY ' + t.rng.every + 'S', tx, y + 31, '#9fb6dc');
     });
   }
 
