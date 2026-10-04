@@ -17,7 +17,7 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | Axe Ball | 100 | 1 from the ball, 12 from the axe |
 | Spider Ball | 100 | 8 |
 | RNG Ball | 100 | its last roll, 1–35 |
-| Execute Ball | 100 | 3 |
+| Execute Ball | 200 | 3 |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
 When two axes meet they clang off each other and both reverse direction.
