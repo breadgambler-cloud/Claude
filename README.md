@@ -17,6 +17,7 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | Axe Ball | 100 | 1 from the ball, 12 from the axe |
 | Spider Ball | 100 | 8 |
 | RNG Ball | 100 | its last roll, 1–35 |
+| Execute Ball | 100 | 3 |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
 When two axes meet they clang off each other and both reverse direction.
@@ -30,3 +31,6 @@ New balls go in the `BALL_TYPES` table in `index.html`.
 The RNG Ball rolls a number from 1 to 35. Each roll takes 1.5 seconds, and it deals no damage while rolling. Once the
 number lands, its next hit deals exactly that much, which uses up the number and starts the next roll. The current
 number shows in a box above the ball.
+
+The Execute Ball barely does damage, but if one of its hits leaves the enemy under 20% HP, the enemy is executed on the
+spot. When you face it, a purple tick on your health bar marks the 20% line.
