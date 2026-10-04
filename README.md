@@ -21,7 +21,7 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | Tank Ball | 200 | 5 |
 | Spike Ball | 100 | 4, spikes 4 (medium) or 7 (big) |
 | Vampire Ball | 100 | 0, bites drain 8 HP per second |
-| Bomb Ball | 100 | 3, blast 14 |
+| Bomb Ball | 100 | 3, every bomb 15 |
 | Ghost Ball | 100 | 9 |
 | Lightning Ball | 100 | 4, zap 6 |
 | Ice Ball | 100 | 7 |
@@ -52,9 +52,9 @@ The Vampire Ball turns to face the enemy. If its fangs touch the enemy, it latch
 half second and healing itself by the same amount. Biting is the only way it does damage. After a bite it needs
 1.5 seconds before it can bite again.
 
-The Bomb Ball's fuse burns down every 4 seconds and it explodes, dealing 14 damage and knockback to any enemy in the blast.
-Every 2.5–4.5 seconds it also drops a mini bomb at a random spot on the map (up to 3 at a time). A mini bomb
-blinks for 2 seconds, showing a ring for its huge blast radius, then explodes for 8 damage and big knockback.
+The Bomb Ball's fuse burns down every 4 seconds and it explodes, dealing 15 damage and knockback to any enemy in the blast.
+Every 1–2 seconds it also drops a mini bomb at a random spot on the map (up to 6 at a time). A mini bomb
+blinks for 2 seconds, showing a ring for its huge blast radius, then explodes for 15 damage and big knockback.
 
 The Ghost Ball is solid for 3 seconds, then fades for 1.5 seconds. While faded it passes through everything and can't be
 hurt by anything: hits, axes, spikes, webs, bites, blasts or lightning.
