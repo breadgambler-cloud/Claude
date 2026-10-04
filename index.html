@@ -163,9 +163,9 @@
       speed: 130,
       colors: { light: '#c9ced6', base: '#8b929c', dark: '#5d646e', rim: '#2a2f37' },
       armor: true,   // plated, riveted body with treads
-      // Once its HP falls to `at`, a shield comes up for the rest of the fight
-      // and cuts all damage it takes by `reduction`.
-      shield: { at: 100, reduction: 0.5 },
+      // Once its HP falls to `at`, a shield comes up for the rest of the fight:
+      // it cuts all damage it takes by `reduction` and raises its own damage by `damageBoost`.
+      shield: { at: 100, reduction: 0.5, damageBoost: 0.5 },
     },
   };
   const BALL_ORDER = Object.keys(BALL_TYPES);
@@ -631,6 +631,12 @@
   // Damage this ball deals on contact. The RNG Ball deals nothing while its
   // number is still rolling; once it has landed, the hit spends it.
   function dealt(ball) {
+    const sh = ball.type.shield;
+    const boost = ball.shielded && sh && sh.damageBoost ? 1 + sh.damageBoost : 1;
+    return Math.round(baseDamage(ball) * boost);
+  }
+
+  function baseDamage(ball) {
     const range = ball.type.damageRange;
     if (range) return randInt(range[0], range[1]);
     if (!ball.type.rng) return ball.type.damage;
@@ -1238,6 +1244,11 @@
       const txt = ball.shielded ? 'SHIELD -' + Math.round(t.shield.reduction * 100) + '% DMG' : 'SHIELD AT ' + t.shield.at + ' HP';
       drawText(txt, alignRight ? x - textWidth(txt) : x, line, ball.shielded ? '#7fc8ff' : '#9fb6dc');
       line += 8;
+      if (ball.shielded && t.shield.damageBoost) {
+        const hit = 'HIT ' + Math.round(t.damage * (1 + t.shield.damageBoost)) + ' +' + Math.round(t.shield.damageBoost * 100) + '%';
+        drawText(hit, alignRight ? x - textWidth(hit) : x, line, '#ff8a8a');
+        line += 8;
+      }
     }
     if (t.execute) {
       const txt = 'EXECUTE <' + Math.round(t.execute.below * 100) + '%';

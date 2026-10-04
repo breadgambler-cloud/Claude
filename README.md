@@ -37,4 +37,4 @@ The Execute Ball barely does damage, but if one of its hits leaves the enemy und
 spot. When you face it, a purple tick on your health bar marks the 20% line.
 
 The Tank Ball is a grey armored ball. When its HP drops to 100, a shield comes up for the rest of the fight and halves
-all damage it takes.
+all damage it takes. Its own damage also goes up 50%, from 5 to 8 per hit.
