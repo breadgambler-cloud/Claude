@@ -53,6 +53,8 @@ half second and healing itself by the same amount. Biting is the only way it doe
 1.5 seconds before it can bite again.
 
 The Bomb Ball's fuse burns down every 4 seconds and it explodes, dealing 14 damage and knockback to any enemy in the blast.
+Every 2.5–4.5 seconds it also drops a mini bomb at a random spot on the map (up to 3 at a time). A mini bomb
+blinks for 2 seconds, showing a ring for its huge blast radius, then explodes for 8 damage and big knockback.
 
 The Ghost Ball is solid for 3 seconds, then fades for 1.5 seconds. While faded it passes through everything and can't be
 hurt by anything: hits, axes, spikes, webs, bites, blasts or lightning.

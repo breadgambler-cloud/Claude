@@ -218,7 +218,12 @@
       colors: { light: '#5a6070', base: '#2b2f3a', dark: '#181b22', rim: '#07080b' },
       cap: true,     // metal fuse cap on top
       // Its fuse burns down and it blows up, hurting anything in the blast.
-      bomb: { every: 4, radius: 44, damage: 14, knock: 200 },
+      bomb: {
+        every: 4, radius: 44, damage: 14, knock: 200,
+        // Every so often it also drops a mini bomb somewhere random on the map.
+        // Mini bombs have a short fuse and a huge blast.
+        mini: { everyMin: 2.5, everyMax: 4.5, fuse: 2, radius: 70, damage: 8, knock: 220, max: 3 },
+      },
     },
     ghost: {
       name: 'GHOST BALL',
@@ -582,6 +587,7 @@
   let executeFx = [];
   let spikes = [];
   let effects = [];   // explosions and lightning bolts
+  let miniBombs = [];
   const picks = ['normal', 'normal'];   // ball type for YOU and CPU
   let hoverCard = -1;
 
@@ -609,6 +615,7 @@
       face: side === 0 ? 0 : Math.PI, latch: null, latchCd: 0,
       // bomb / ghost / lightning / ice
       fuse: t.bomb ? t.bomb.every : 0,
+      miniT: t.bomb ? t.bomb.mini.everyMin : 0,
       phased: false, phaseT: t.ghost ? t.ghost.solid : 0,
       zapT: t.zap ? t.zap.every : 0,
       chill: 0,
@@ -665,6 +672,7 @@
     executeFx = [];
     spikes = [];
     effects = [];
+    miniBombs = [];
     state = 'aim';      // select -> aim -> fight -> over
     winner = null;
     shake = 0;
@@ -1145,24 +1153,56 @@
   // ---------------------------------------------------------------------------
   // Bomb, Ghost, Lightning
   // ---------------------------------------------------------------------------
+  // Blast at (x, y): hurts and knocks back every enemy of `owner` in range.
+  function explode(owner, x, y, radius, damage, knock) {
+    effects.push({ kind: 'boom', x, y, r: radius, t: 0, life: 0.45 });
+    shake = Math.max(shake, 0.3);
+    burst(x, y, { light: '#fff3b0', base: '#ffb03b', dark: '#ff5a1f' }, 24);
+    for (const foe of balls) {
+      if (!foe.alive || foe.side === owner.side) continue;
+      const dx = foe.x - x, dy = foe.y - y, d = Math.hypot(dx, dy) || 1;
+      if (d > radius + foe.r) continue;
+      if (hurt(foe, damage, owner, '#ffb03b') > 0 && foe.stuck <= 0 && !foe.latch) {
+        foe.vx += dx / d * knock; foe.vy += dy / d * knock;
+        clampSpeed(foe);
+      }
+    }
+  }
+
   function updateBomb(b, dt) {
     const cfg = b.type.bomb;
     if (!cfg || !b.alive) return;
     b.fuse -= dt;
-    if (b.fuse > 0) return;
-    b.fuse = cfg.every;
-    effects.push({ kind: 'boom', x: b.x, y: b.y, r: cfg.radius, t: 0, life: 0.45 });
-    shake = Math.max(shake, 0.3);
-    burst(b.x, b.y, { light: '#fff3b0', base: '#ffb03b', dark: '#ff5a1f' }, 24);
-    for (const foe of balls) {
-      if (foe === b || !foe.alive || foe.side === b.side) continue;
-      const dx = foe.x - b.x, dy = foe.y - b.y, d = Math.hypot(dx, dy) || 1;
-      if (d > cfg.radius + foe.r) continue;
-      if (hurt(foe, cfg.damage, b, '#ffb03b') > 0 && foe.stuck <= 0 && !foe.latch) {
-        foe.vx += dx / d * cfg.knock; foe.vy += dy / d * cfg.knock;
-        clampSpeed(foe);
+    if (b.fuse <= 0) {
+      b.fuse = cfg.every;
+      explode(b, b.x, b.y, cfg.radius, cfg.damage, cfg.knock);
+    }
+    // drop a mini bomb at a random spot
+    const m = cfg.mini;
+    b.miniT -= dt;
+    if (b.miniT <= 0) {
+      b.miniT = m.everyMin + Math.random() * (m.everyMax - m.everyMin);
+      if (miniBombs.filter(mb => mb.owner === b).length < m.max) {
+        const pad = 10;
+        miniBombs.push({
+          owner: b, fuse: m.fuse, t: 0,
+          x: PLAY.left + pad + Math.random() * (PLAY.right - PLAY.left - pad * 2),
+          y: PLAY.top + pad + Math.random() * (PLAY.bottom - PLAY.top - pad * 2),
+        });
       }
     }
+  }
+
+  function updateMiniBombs(dt) {
+    for (const mb of miniBombs) {
+      mb.t += dt;
+      mb.fuse -= dt;
+      if (mb.fuse <= 0) {
+        const m = mb.owner.type.bomb.mini;
+        explode(mb.owner, mb.x, mb.y, m.radius, m.damage, m.knock);
+      }
+    }
+    miniBombs = miniBombs.filter(mb => mb.fuse > 0);
   }
 
   function updateGhost(b, dt) {
@@ -1297,6 +1337,7 @@
         b.chill = Math.max(0, b.chill - dt);
       }
       for (const sp of spikes) sp.t += dt;
+      updateMiniBombs(dt);
       for (let i = 0; i < balls.length; i++)
         for (let j = i + 1; j < balls.length; j++) {
           const a = balls[i], b = balls[j];
@@ -1538,6 +1579,50 @@
     ctx.globalAlpha = 1;
   }
 
+  // Mini bombs: a small bomb with a lit fuse, and a blinking ring showing its huge blast.
+  function drawMiniBombs() {
+    for (const mb of miniBombs) {
+      const m = mb.owner.type.bomb.mini;
+      const blink = Math.floor(performance.now() / (mb.fuse < 0.7 ? 60 : 160)) % 2 === 0;
+      // warning ring
+      ctx.globalAlpha = blink ? 0.9 : 0.45;
+      ctx.fillStyle = '#ff7a3d';
+      const dots = 160;
+      for (let i = 0; i < dots; i++) {
+        if (i % 4 === 3) continue;   // dashed
+        const a = i / dots * Math.PI * 2;
+        ctx.fillRect(Math.round(mb.x + Math.cos(a) * m.radius), Math.round(mb.y + Math.sin(a) * m.radius), 1, 1);
+      }
+      // the danger zone fills in as the fuse burns down
+      const k = 1 - mb.fuse / m.fuse;
+      const R = m.radius * k;
+      ctx.globalAlpha = 0.08 + 0.1 * k;
+      for (let dy = -R; dy <= R; dy++) {
+        const w = Math.floor(Math.sqrt(R * R - dy * dy));
+        ctx.fillRect(Math.round(mb.x - w), Math.round(mb.y + dy), w * 2 + 1, 1);
+      }
+      ctx.globalAlpha = 1;
+      // the bomb itself, popping in when it lands
+      const r = Math.round(5 * Math.min(1, mb.t / 0.12));
+      if (r <= 0) continue;
+      // orange outline so it stands out on the dark floor
+      ctx.fillStyle = blink ? '#ff7a3d' : '#b5502a';
+      for (let dy = -r - 1; dy <= r + 1; dy++) {
+        const w = Math.floor(Math.sqrt((r + 1) * (r + 1) - dy * dy));
+        ctx.fillRect(Math.round(mb.x - w), Math.round(mb.y + dy), w * 2 + 1, 1);
+      }
+      for (let dy = -r; dy <= r; dy++) {
+        const w = Math.floor(Math.sqrt(r * r - dy * dy));
+        ctx.fillStyle = '#2b2f3a';
+        ctx.fillRect(Math.round(mb.x - w), Math.round(mb.y + dy), w * 2 + 1, 1);
+      }
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(mb.x - 2), Math.round(mb.y - 3), 1, 1);
+      ctx.fillStyle = '#5a6070'; ctx.fillRect(Math.round(mb.x - 2), Math.round(mb.y - 3), 2, 1);
+      ctx.fillStyle = '#c9a36b'; pixLine(mb.x, mb.y - r, mb.x + 2, mb.y - r - 3);
+      if (blink) { ctx.fillStyle = '#fff3b0'; ctx.fillRect(Math.round(mb.x + 2), Math.round(mb.y - r - 4), 2, 2); }
+    }
+  }
+
   // Bomb fuse with a flickering spark; it flickers faster as it burns down.
   function drawFuse(x, y, r, fuseLeft) {
     ctx.fillStyle = '#c9a36b';
@@ -1773,7 +1858,10 @@
       line += 8;
     }
     const info = [];
-    if (t.bomb) info.push(['BOOM IN ' + Math.max(0, ball.fuse).toFixed(1) + 'S', ball.fuse < 1 ? '#ff5a1f' : '#ffb03b']);
+    if (t.bomb) {
+      info.push(['BOOM IN ' + Math.max(0, ball.fuse).toFixed(1) + 'S', ball.fuse < 1 ? '#ff5a1f' : '#ffb03b']);
+      info.push(['MINI BOMBS ' + miniBombs.filter(mb => mb.owner === ball).length + '/' + t.bomb.mini.max, '#ffb03b']);
+    }
     if (t.ghost) info.push([(ball.phased ? 'FADED ' : 'SOLID ') + Math.max(0, ball.phaseT).toFixed(1) + 'S', ball.phased ? '#ffffff' : '#b9b0d6']);
     if (t.zap) info.push(['ZAP IN ' + Math.max(0, ball.zapT).toFixed(1) + 'S', '#ffe14d']);
     if (ball.chill > 0) info.push(['SLOWED ' + ball.chill.toFixed(1) + 'S', '#9fe3f5']);
@@ -1925,6 +2013,7 @@
     if (state !== 'select') {
       drawWebs();
       drawSpikes();
+      drawMiniBombs();
       for (const b of balls) drawWeapon(b);
       for (const b of balls) drawBallWithFlash(b);
       for (const b of balls) drawWrap(b);
