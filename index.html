@@ -136,7 +136,7 @@
       rng: {
         min: 1,
         max: 35,
-        spinTime: 5,    // seconds each roll lasts (no damage until it lands)
+        spinTime: 1.5,  // seconds each roll lasts (no damage until it lands)
       },
     },
   };
@@ -415,7 +415,7 @@
 
   // Card rectangles on the pick screen: a two-column grid inside the arena.
   function cardRects() {
-    const cols = 2, gap = 4, w = 64, h = 50;
+    const cols = 2, gap = 4, w = 66, h = 50;
     const total = cols * w + (cols - 1) * gap;
     const x0 = Math.round((PLAY.left + PLAY.right - total) / 2);
     const y0 = PLAY.top + 28;
@@ -1149,7 +1149,7 @@
       ctx.restore();
       drawTextCentered('KEY ' + (i + 1), cx, y + c.h - 9, hot ? '#ffd23f' : '#7f93b8');
       // stats on the right
-      const tx = c.x + 31;
+      const tx = c.x + 29;
       drawText(t.short, tx, y + 5, '#ffffff');
       drawText('HP ' + t.hp, tx, y + 15, '#5ee07a');
       const hit = t.rng ? t.rng.min + '-' + t.rng.max : String(t.damage);
