@@ -27,5 +27,6 @@ snaps. Each Spider Ball can have 2 webs out at a time, and each web lasts 10 sec
 
 New balls go in the `BALL_TYPES` table in `index.html`.
 
-The RNG Ball rolls a number from 1 to 35 every 3 seconds. Its next hit deals that much damage, and landing a hit
-uses up the number and rolls a new one. The current number shows in a box above the ball.
+The RNG Ball rolls a number from 1 to 35. Each roll takes 5 seconds, and it deals no damage while rolling. Once the
+number lands, its next hit deals exactly that much, which uses up the number and starts the next roll. The current
+number shows in a box above the ball.

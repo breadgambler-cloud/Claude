@@ -130,13 +130,13 @@
       speed: 130,
       colors: { light: '#7fe0a2', base: '#2f9e5a', dark: '#1f6e3e', rim: '#0e3a20' },
       pips: true,    // dice pips
-      // Every so often it rolls a number; its next hit deals that much damage.
-      // Landing a hit uses up the number and rolls a fresh one.
+      // It rolls a number for a few seconds and does no damage while rolling.
+      // Once the number lands, its next hit deals exactly that much, which
+      // uses the number up and starts the next roll.
       rng: {
         min: 1,
         max: 35,
-        every: 3,       // seconds between rolls
-        spinTime: 0.5,  // how long the number visibly spins before it lands
+        spinTime: 5,    // seconds each roll lasts (no damage until it lands)
       },
     },
   };
@@ -391,12 +391,9 @@
       // being caught in a web
       stuck: 0, stuckWeb: null, savedVx: 0, savedVy: 0, webImmune: 0,
       // rng
-      rngValue: 0, rngTimer: 0, rngSpin: 0,
+      rngValue: 0, rngSpin: 0,
     };
-    if (t.rng) {
-      ball.rngValue = randInt(t.rng.min, t.rng.max);
-      ball.rngTimer = t.rng.every;
-    }
+    if (t.rng) rollRng(ball);   // the first roll starts at launch
     return ball;
   }
 
@@ -526,18 +523,30 @@
     }
   }
 
-  // Damage this ball deals on contact. The RNG Ball spends its rolled number.
+  // Damage this ball deals on contact. The RNG Ball deals nothing while its
+  // number is still rolling; once it has landed, the hit spends it.
   function dealt(ball) {
     if (!ball.type.rng) return ball.type.damage;
+    if (ball.rngSpin > 0) return 0;
     const v = ball.rngValue;
     rollRng(ball);
     return v;
   }
 
+  function strike(attacker, victim) {
+    const amount = dealt(attacker);
+    if (amount > 0) hurt(victim, amount, attacker);
+    else if (attacker.type.rng) {
+      // still rolling: the bump does nothing (one label at a time per ball)
+      if (!popups.some(p => p.noDmg === victim && p.t < 0.6)) {
+        popups.push({ x: victim.x, y: victim.y - victim.r - 4, text: 'NO DMG', t: 0, color: '#9fb6dc', noDmg: victim });
+      }
+    }
+  }
+
   function rollRng(ball) {
     const r = ball.type.rng;
     ball.rngValue = randInt(r.min, r.max);
-    ball.rngTimer = r.every;
     ball.rngSpin = r.spinTime;
   }
 
@@ -546,16 +555,13 @@
   }
 
   function updateRng(ball, dt) {
-    if (!ball.type.rng || !ball.alive) return;
+    if (!ball.type.rng || !ball.alive || state !== 'fight') return;
     if (ball.rngSpin > 0) {
       ball.rngSpin -= dt;
       if (ball.rngSpin <= 0 && ball.rngValue >= 30) {
         popups.push({ x: ball.x, y: ball.y - ball.r - 18, text: 'LUCKY!', t: 0, color: '#ff5a3d' });
       }
     }
-    if (state !== 'fight') return;
-    ball.rngTimer -= dt;
-    if (ball.rngTimer <= 0) rollRng(ball);
   }
 
   function burst(x, y, colors, n) {
@@ -608,8 +614,8 @@
     // the other one out, it never gets to hit back.
     const hx = a.x + nx * a.r, hy = a.y + ny * a.r;
     const [first, second] = driveA >= driveB ? [a, b] : [b, a];
-    hurt(second, dealt(first), first);
-    if (second.alive) hurt(first, dealt(second), second);
+    strike(first, second);
+    if (second.alive) strike(second, first);
     a.squash = b.squash = 0.12;
     shake = 0.12;
     burst(hx, hy, { light: '#ffffff', base: '#ffe28a', dark: '#ffb347' }, 8);
@@ -1069,7 +1075,7 @@
     let line = 67;
     if (t.weapon) line += 8;
     if (t.rng) {
-      const txt = ball.rngSpin > 0 ? 'ROLLING...' : 'NEXT HIT ' + ball.rngValue;
+      const txt = ball.rngSpin > 0 ? 'ROLLING ' + ball.rngSpin.toFixed(1) + 'S' : 'NEXT HIT ' + ball.rngValue;
       drawText(txt, alignRight ? x - textWidth(txt) : x, line, ball.rngSpin > 0 ? '#ffffff' : rngColor(ball.rngValue));
       line += 8;
     }
@@ -1150,7 +1156,7 @@
       drawText('HIT ' + hit, tx, y + 23, t.rng ? '#ffd23f' : '#ff8a8a');
       if (t.weapon) drawText('AXE ' + t.weapon.damage, tx, y + 31, '#ffb03b');
       if (t.web) drawText('WEB ' + t.web.stuckTime + 'S', tx, y + 31, '#e6e9f2');
-      if (t.rng) drawText('EVERY ' + t.rng.every + 'S', tx, y + 31, '#9fb6dc');
+      if (t.rng) drawText('ROLL ' + t.rng.spinTime + 'S', tx, y + 31, '#9fb6dc');
     });
   }
 
