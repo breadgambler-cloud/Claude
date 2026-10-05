@@ -25,13 +25,14 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | Ghost Ball | 100 | 9 |
 | Lightning Ball | 100 | 4, zap 6 |
 | Ice Ball | 100 | 7 |
+| Shocker Ball | 100 | 7, shock 6 |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
 When two axes meet they clang off each other and both reverse direction.
 
 The Spider Ball starts a web strand when it touches a wall. When it then touches a different wall, the web is set
-between the two spots. An enemy that touches a set web is stuck in place for 3 seconds, then breaks free and the web
-snaps. Each Spider Ball can have 2 webs out at a time, and each web lasts 10 seconds.
+between the two spots. An enemy that touches a set web takes 1 damage (at most every 0.3 seconds while touching).
+Each Spider Ball can have 5 webs out at a time, and each web lasts 10 seconds.
 
 New balls go in the `BALL_TYPES` table in `index.html`.
 
@@ -62,3 +63,7 @@ hurt by anything: hits, axes, spikes, webs, bites, blasts or lightning.
 The Lightning Ball strikes the enemy with lightning every 3 seconds for 6 damage, wherever they are in the arena.
 
 The Ice Ball's hits chill the enemy, who moves at half speed for 2 seconds.
+
+The Shocker Ball charges up with blue electricity for 1.5 seconds, every 3 seconds. If the enemy hits it while it's
+charged (body, axe or bite), the enemy takes 6 damage and is stunned for 1.5 seconds: frozen in place and unable to
+deal any damage.

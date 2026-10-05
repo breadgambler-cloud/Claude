@@ -113,11 +113,12 @@
       eyes: true,    // red spider eyes and an hourglass mark
       legs: true,
       // Touch a wall to start a strand, touch a different wall to set the web
-      // between the two spots. Enemies that touch a set web get stuck.
+      // between the two spots. Enemies that touch a set web take damage.
       web: {
-        stuckTime: 3,   // seconds an enemy stays stuck
-        life: 10,       // seconds a set web lasts
-        max: 2,         // webs on the field at once (oldest goes first)
+        damage: 1,         // per touch
+        hitCooldown: 0.3,  // seconds between web hits on the same ball
+        life: 10,          // seconds a set web lasts
+        max: 5,            // webs on the field at once (oldest goes first)
       },
     },
     rng: {
@@ -263,6 +264,20 @@
       flake: true,   // snowflake mark
       // Its hits chill the enemy: they move at half speed for a while.
       freeze: { time: 2, slow: 0.5 },
+    },
+    shocker: {
+      name: 'SHOCKER BALL',
+      short: 'SHOCKER',
+      hp: 100,
+      damage: 7,
+      mass: 1,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#9fd8ff', base: '#3a6fb0', dark: '#22497a', rim: '#0d1f3a' },
+      coil: true,    // copper coil bands
+      // Every so often it charges up with blue electricity. If the enemy hits it
+      // while charged, the enemy is shocked and stunned: frozen and unable to deal damage.
+      shocker: { every: 3, charge: 1.5, stun: 1.5, damage: 6 },
     },
   };
   const BALL_ORDER = Object.keys(BALL_TYPES);
@@ -447,6 +462,16 @@
         }
       }
     }
+    if (type.coil) {
+      // copper coil bands with a bright terminal on each side
+      for (const cy of [r - 7, r + 6]) {
+        for (let px = 0; px < d; px++) {
+          if ((px - r) ** 2 + (cy - r) ** 2 > (r - 1.2) ** 2) continue;
+          g.fillStyle = px % 2 ? '#c97a3a' : '#e8a25f'; g.fillRect(px, cy, 1, 2);
+        }
+      }
+      g.fillStyle = '#ffe14d'; g.fillRect(2, r - 1, 2, 3); g.fillRect(d - 4, r - 1, 2, 3);
+    }
     if (type.flake) {
       // six-armed snowflake
       g.fillStyle = '#ffffff';
@@ -604,7 +629,7 @@
       // spider
       strand: null,       // {x, y, wall} where the current web strand is anchored
       // being caught in a web
-      stuck: 0, stuckWeb: null, savedVx: 0, savedVy: 0, webImmune: 0,
+      stuck: 0, savedVx: 0, savedVy: 0, webImmune: 0,   // stuck = time left stunned
       // rng
       rngValue: 0, rngSpin: 0,
       // tank
@@ -619,6 +644,8 @@
       phased: false, phaseT: t.ghost ? t.ghost.solid : 0,
       zapT: t.zap ? t.zap.every : 0,
       chill: 0,
+      // shocker / stun
+      shockT: t.shocker ? t.shocker.every : 0, charged: 0, stunned: false,
     };
     if (t.rng) rollRng(ball);   // the first roll starts at launch
     return ball;
@@ -642,9 +669,11 @@
 
   // Card rectangles on the pick screen: a two-column grid inside the arena.
   function cardRects() {
-    const cols = 4, gap = 4, w = 70, h = 40;
-    const y0 = 36;
+    const cols = 4, gap = 3, w = 70;
+    const y0 = 34;
     const n = BALL_ORDER.length;
+    const rows = Math.ceil(n / cols);
+    const h = Math.min(40, Math.floor((H - 9 - y0 - (rows - 1) * gap) / rows));
     return BALL_ORDER.map((key, i) => {
       // each row is centered, so a short last row sits in the middle
       const row = Math.floor(i / cols);
@@ -742,6 +771,7 @@
   // ---------------------------------------------------------------------------
   function hurt(ball, amount, attacker, color = '#ff6b6b') {
     if (!ball.alive || ball.phased) return 0;   // a faded ghost can't be touched
+    if (attacker.stunned) return 0;             // a stunned ball can't do damage
     if (attacker.type.rng) color = amount >= 20 ? '#ffd23f' : '#ff6b6b';
     if (ball.shielded) {
       amount = Math.max(1, Math.round(amount * (1 - ball.type.shield.reduction)));
@@ -858,6 +888,10 @@
     const rel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
     if (rel <= 0) return;
 
+    // hitting a charged shocker stuns you (and a stunned ball deals no damage)
+    shockCheck(a, b);
+    shockCheck(b, a);
+
     // a vampire facing the other ball bites and hangs on instead of bouncing
     if (tryLatch(a, b)) { strike(b, a); return; }
     if (tryLatch(b, a)) { strike(a, b); return; }
@@ -931,6 +965,7 @@
     if (!blade) return;
 
     a.weaponCd = w.hitCooldown;
+    shockCheck(b, a);   // chopping a charged shocker shocks the axe wielder
     hurt(b, w.damage, a, '#ffb03b');
     // knock the victim away; a faster-spinning axe hits with more momentum
     const kx = b.x - a.x, ky = b.y - a.y, kl = Math.hypot(kx, ky) || 1;
@@ -1091,6 +1126,7 @@
   function tryLatch(v, foe) {
     const cfg = v.type.vampire;
     if (!cfg || v.latch || v.latchCd > 0 || v.stuck > 0 || !foe.alive || foe.latch || foe.phased) return false;
+    if (foe.charged > 0) { shockCheck(foe, v); return false; }   // biting a charged shocker is a bad idea
     const toFoe = Math.atan2(foe.y - v.y, foe.x - v.x);
     if (Math.abs(angleDiff(v.face, toFoe)) > cfg.biteArc) return false;
     v.latch = { target: foe, t: cfg.latchTime, tick: 0.15, ang: Math.atan2(v.y - foe.y, v.x - foe.x) };
@@ -1147,6 +1183,49 @@
       const want = Math.atan2(foe.y - v.y, foe.x - v.x);
       const d = angleDiff(v.face, want);
       v.face += Math.sign(d) * Math.min(Math.abs(d), cfg.turnRate * dt);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Shocker: charge up, stun whoever hits it while charged
+  // ---------------------------------------------------------------------------
+  function stun(b, time) {
+    if (b.stuck <= 0) { b.savedVx = b.vx; b.savedVy = b.vy; }
+    if (b.latch) detach(b);
+    b.stuck = Math.max(b.stuck, time);
+    b.stunned = true;
+    b.vx = 0; b.vy = 0;
+  }
+
+  // `other` hit `shocker`: if it's charged, the hitter gets shocked and stunned.
+  function shockCheck(shocker, other) {
+    const cfg = shocker.type.shocker;
+    if (!cfg || shocker.charged <= 0 || !shocker.alive || !other.alive || other.side === shocker.side || other.stunned) return false;
+    stun(other, cfg.stun);
+    hurt(other, cfg.damage, shocker, '#7fd8ff');
+    popups.push({ x: other.x, y: other.y - other.r - 12, text: 'STUNNED!', t: -0.1, color: '#7fd8ff' });
+    // a crackle of lightning between them
+    const pts = [{ x: shocker.x, y: shocker.y }];
+    for (let i = 1; i < 4; i++) {
+      const t = i / 4;
+      pts.push({ x: shocker.x + (other.x - shocker.x) * t + (Math.random() - 0.5) * 10, y: shocker.y + (other.y - shocker.y) * t + (Math.random() - 0.5) * 10 });
+    }
+    pts.push({ x: other.x, y: other.y });
+    effects.push({ kind: 'bolt', pts, t: 0, life: 0.3 });
+    burst(other.x, other.y, { light: '#ffffff', base: '#7fd8ff', dark: '#3d8fe0' }, 14);
+    shake = Math.max(shake, 0.2);
+    return true;
+  }
+
+  function updateShocker(b, dt) {
+    const cfg = b.type.shocker;
+    if (!cfg || !b.alive) return;
+    if (b.charged > 0) { b.charged = Math.max(0, b.charged - dt); return; }
+    b.shockT -= dt;
+    if (b.shockT <= 0) {
+      b.shockT = cfg.every;
+      b.charged = cfg.charge;
+      burst(b.x, b.y, { light: '#ffffff', base: '#7fd8ff', dark: '#3d8fe0' }, 10);
     }
   }
 
@@ -1256,11 +1335,9 @@
     }
     // a different wall: the web is set between the two spots
     webs.push({ x1: spider.strand.x, y1: spider.strand.y, x2: hit.x, y2: hit.y, owner: spider, t: 0, life: w.life });
-    // too many webs: drop the oldest one that isn't holding someone
+    // too many webs: drop the oldest
     while (webs.filter(wb => wb.owner === spider).length > w.max) {
-      const old = webs.findIndex(wb => wb.owner === spider && !wb.holding);
-      if (old < 0) break;
-      webs.splice(old, 1);
+      webs.splice(webs.findIndex(wb => wb.owner === spider), 1);
     }
     spider.strand = null;
     popups.push({ x: hit.x, y: hit.y - 6, text: 'WEB!', t: 0, color: '#e6e9f2' });
@@ -1276,35 +1353,30 @@
 
   function updateWebs(dt) {
     for (const wb of webs) wb.t += dt;
-    webs = webs.filter(wb => wb.t < wb.life || wb.holding);
+    webs = webs.filter(wb => wb.t < wb.life);
     for (const b of balls) {
       if (!b.alive) continue;
       b.webImmune = Math.max(0, b.webImmune - dt);
       if (b.stuck > 0) {
         b.stuck -= dt;
         if (b.stuck <= 0) {
-          // break free: the web snaps and the ball carries on
+          // the stun wears off and the ball carries on
           b.stuck = 0;
+          b.stunned = false;
           b.vx = b.savedVx; b.vy = b.savedVy;
-          b.webImmune = 1;
-          webs = webs.filter(wb => wb !== b.stuckWeb);
-          b.stuckWeb = null;
-          burst(b.x, b.y, { light: '#ffffff', base: '#e6e9f2', dark: '#b7bfd3' }, 10);
+          burst(b.x, b.y, { light: '#ffffff', base: '#7fd8ff', dark: '#3d8fe0' }, 10);
         }
         continue;
       }
       if (b.webImmune > 0 || b.latch || b.phased) continue;   // a biting vampire or faded ghost passes over webs
+      // touching an enemy web stings for a little damage
       for (const wb of webs) {
-        if (wb.owner === b || wb.owner.side === b.side || wb.holding) continue;
+        if (wb.owner === b || wb.owner.side === b.side) continue;
         if (distToSegment(b.x, b.y, wb.x1, wb.y1, wb.x2, wb.y2) > b.r) continue;
-        const stuckTime = wb.owner.type.web.stuckTime;
-        b.stuck = stuckTime;
-        b.stuckWeb = wb;
-        wb.holding = true;
-        b.savedVx = b.vx; b.savedVy = b.vy;
-        b.vx = 0; b.vy = 0;
-        popups.push({ x: b.x, y: b.y - b.r - 4, text: 'STUCK!', t: -0.2, color: '#e6e9f2' });
-        burst(b.x, b.y, { light: '#ffffff', base: '#e6e9f2', dark: '#b7bfd3' }, 8);
+        const cfg = wb.owner.type.web;
+        b.webImmune = cfg.hitCooldown;
+        hurt(b, cfg.damage, wb.owner, '#e6e9f2');
+        burst(b.x, b.y, { light: '#ffffff', base: '#e6e9f2', dark: '#b7bfd3' }, 4);
         break;
       }
     }
@@ -1334,6 +1406,7 @@
         updateBomb(b, dt);
         updateGhost(b, dt);
         updateZap(b, dt);
+        updateShocker(b, dt);
         b.chill = Math.max(0, b.chill - dt);
       }
       for (const sp of spikes) sp.t += dt;
@@ -1506,7 +1579,7 @@
 
   function drawWebs() {
     for (const wb of webs) {
-      const fade = wb.holding ? 1 : Math.min(1, (wb.life - wb.t) / 1.5);
+      const fade = Math.min(1, (wb.life - wb.t) / 1.5);
       const dx = wb.x2 - wb.x1, dy = wb.y2 - wb.y1, len = Math.hypot(dx, dy) || 1;
       const px = -dy / len, py = dx / len;   // perpendicular
       ctx.globalAlpha = 0.9 * fade;
@@ -1673,23 +1746,58 @@
     ctx.globalAlpha = 1;
   }
 
-  // Web wrapped around a stuck ball.
+  // Jagged electric arcs in a ring around a ball.
+  function drawArcs(x, y, R, count, colors) {
+    for (let k = 0; k < count; k++) {
+      const a0 = Math.random() * Math.PI * 2;
+      let px = x + Math.cos(a0) * R, py = y + Math.sin(a0) * R;
+      ctx.fillStyle = colors[k % colors.length];
+      for (let s2 = 1; s2 <= 3; s2++) {
+        const a = a0 + s2 * 0.22;
+        const rr = R + (Math.random() - 0.5) * 5;
+        const nx = x + Math.cos(a) * rr, ny = y + Math.sin(a) * rr;
+        pixLine(px, py, nx, ny);
+        px = nx; py = ny;
+      }
+    }
+  }
+
+  // A stunned ball crackles with electricity, with a countdown bar under it.
   function drawWrap(b) {
     if (!b.alive || b.stuck <= 0) return;
-    ctx.globalAlpha = 0.8;
-    ctx.fillStyle = '#f2f4fa';
-    const r = b.r + 1;
-    for (let k = 0; k < 4; k++) {
-      const a = k * Math.PI / 4 + 0.3;
-      pixLine(b.x - Math.cos(a) * r, b.y - Math.sin(a) * r, b.x + Math.cos(a) * r, b.y + Math.sin(a) * r);
+    drawArcs(b.x, b.y, b.r + 2, 4, ['#ffe14d', '#7fd8ff', '#ffffff']);
+    // dizzy stars circling overhead
+    for (let i = 0; i < 3; i++) {
+      const a = performance.now() / 200 + i * Math.PI * 2 / 3;
+      ctx.fillStyle = '#ffe14d';
+      ctx.fillRect(Math.round(b.x + Math.cos(a) * 8), Math.round(b.y - b.r - 4 + Math.sin(a) * 2), 2, 2);
     }
-    ctx.globalAlpha = 1;
-    drawTextCentered(Math.ceil(b.hp), b.x + 1, Math.round(b.y) - 2, '#ffffff', 1, '#1a2233');
-    // countdown bar under the ball
-    const max = b.stuckWeb ? b.stuckWeb.owner.type.web.stuckTime : 3;
-    const w = Math.round((b.r * 2) * (b.stuck / max));
+    const max = 1.5;
+    const w = Math.round((b.r * 2) * Math.min(1, b.stuck / max));
     ctx.fillStyle = '#0a1020'; ctx.fillRect(Math.round(b.x - b.r) - 1, Math.round(b.y + b.r + 2), b.r * 2 + 2, 3);
-    ctx.fillStyle = '#e6e9f2'; ctx.fillRect(Math.round(b.x - b.r), Math.round(b.y + b.r + 3), w, 1);
+    ctx.fillStyle = '#7fd8ff'; ctx.fillRect(Math.round(b.x - b.r), Math.round(b.y + b.r + 3), w, 1);
+  }
+
+  // Blue electric aura around a charged shocker; sparks just before it charges.
+  function drawCharge(b) {
+    if (!b.alive || !b.type.shocker) return;
+    if (b.charged > 0) {
+      ctx.globalAlpha = 0.22;
+      ctx.fillStyle = '#7fd8ff';
+      const R = b.r + 5;
+      for (let dy = -R; dy <= R; dy++) {
+        const w = Math.floor(Math.sqrt(R * R - dy * dy));
+        ctx.fillRect(Math.round(b.x - w), Math.round(b.y + dy), w * 2 + 1, 1);
+      }
+      ctx.globalAlpha = 1;
+      drawArcs(b.x, b.y, b.r + 4, 6, ['#7fd8ff', '#ffffff', '#3d8fe0']);
+    } else if (b.shockT < 0.5) {
+      ctx.fillStyle = '#7fd8ff';
+      for (let i = 0; i < 3; i++) {
+        const a = Math.random() * Math.PI * 2;
+        ctx.fillRect(Math.round(b.x + Math.cos(a) * (b.r + 2)), Math.round(b.y + Math.sin(a) * (b.r + 2)), 1, 1);
+      }
+    }
   }
 
   function drawAxe(x, y, angle, alpha = 1, scale = 1) {
@@ -1864,6 +1972,7 @@
     }
     if (t.ghost) info.push([(ball.phased ? 'FADED ' : 'SOLID ') + Math.max(0, ball.phaseT).toFixed(1) + 'S', ball.phased ? '#ffffff' : '#b9b0d6']);
     if (t.zap) info.push(['ZAP IN ' + Math.max(0, ball.zapT).toFixed(1) + 'S', '#ffe14d']);
+    if (t.shocker) info.push(ball.charged > 0 ? ['CHARGED ' + ball.charged.toFixed(1) + 'S', '#ffffff'] : ['CHARGE IN ' + Math.max(0, ball.shockT).toFixed(1) + 'S', '#7fd8ff']);
     if (ball.chill > 0) info.push(['SLOWED ' + ball.chill.toFixed(1) + 'S', '#9fe3f5']);
     for (const [txt, col] of info) {
       drawText(txt, alignRight ? x - textWidth(txt) : x, line, col);
@@ -1901,7 +2010,7 @@
       drawText(webText, alignRight ? x - textWidth(webText) : x, line, '#e6e9f2');
       line += 8;
     }
-    const speed = ball.stuck > 0 ? 'STUCK ' + ball.stuck.toFixed(1) + 'S'
+    const speed = ball.stuck > 0 ? 'STUNNED ' + ball.stuck.toFixed(1) + 'S'
       : 'SPEED X' + (Math.hypot(ball.vx, ball.vy) / t.speed).toFixed(1);
     drawText(speed, alignRight ? x - textWidth(speed) : x, line, ball.stuck > 0 ? '#ffffff' : '#9fe6ff');
     if (state === 'aim') {
@@ -1974,14 +2083,14 @@
       ctx.restore();
       drawText(String(i + 1), c.x + 2, y + 3, hot ? '#ffd23f' : '#7f93b8');   // its number key
       // stats on the right
-      const tx = c.x + 33, ty = y + 5;
+      const tx = c.x + 33, ty = y + Math.max(2, Math.floor((c.h - 28) / 2));
       drawText(t.short, tx, ty, '#ffffff');
       drawText('HP ' + t.hp, tx, ty + 8, '#5ee07a');
       const hit = t.rng ? t.rng.min + '-' + t.rng.max
         : t.damageRange ? t.damageRange[0] + '-' + t.damageRange[1] : String(t.damage);
       drawText('HIT ' + hit, tx, ty + 16, t.rng ? '#ffd23f' : '#ff8a8a');
       if (t.weapon) drawText('AXE ' + t.weapon.damage, tx, ty + 24, '#ffb03b');
-      if (t.web) drawText('WEB ' + t.web.stuckTime + 'S', tx, ty + 24, '#e6e9f2');
+      if (t.web) drawText('WEB DMG ' + t.web.damage, tx, ty + 24, '#e6e9f2');
       if (t.shield) drawText('SHLD ' + Math.round(t.shield.reduction * 100) + '%', tx, ty + 24, '#7fc8ff');
       if (t.execute) drawText('KILL <' + Math.round(t.execute.below * 100) + '%', tx, ty + 24, '#d6a8ff');
       if (t.rng) drawText('ROLL ' + t.rng.spinTime + 'S', tx, ty + 24, '#9fb6dc');
@@ -1991,6 +2100,7 @@
       if (t.ghost) drawText('FADE ' + t.ghost.faded + 'S', tx, ty + 24, '#e6e0f5');
       if (t.zap) drawText('ZAP ' + t.zap.damage + '/' + t.zap.every + 'S', tx, ty + 24, '#ffe14d');
       if (t.freeze) drawText('SLOW ' + t.freeze.time + 'S', tx, ty + 24, '#9fe3f5');
+      if (t.shocker) drawText('STUN ' + t.shocker.stun + 'S', tx, ty + 24, '#7fd8ff');
     });
   }
 
@@ -2017,6 +2127,7 @@
       for (const b of balls) drawWeapon(b);
       for (const b of balls) drawBallWithFlash(b);
       for (const b of balls) drawWrap(b);
+      for (const b of balls) drawCharge(b);
       for (const b of balls) drawShield(b);
       for (const b of balls) drawChill(b);
       drawEffects();
