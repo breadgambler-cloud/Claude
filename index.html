@@ -465,17 +465,16 @@
       colors: { light: '#7fc4d6', base: '#2f7f99', dark: '#1d5168', rim: '#0a1f2a' },
       rope: true,    // a twisted rope band around its middle
       // A hook circles it like the Axe Ball's axe. When the hook catches the enemy, it is
-      // swung around fast, then flung away. Every wall it slams into while swung or flung
-      // costs it 10 HP.
+      // swung around fast, then flung away. Every wall it slams into while still on the
+      // hook costs it 7 HP.
       hook: {
         reach: 24,         // ball center to the hook's point
         spin: 3,           // radians per second while hunting
         swingSpin: 10,     // radians per second with an enemy on the hook
         catchDamage: 3,
         hold: 2.2,         // seconds an enemy stays on the hook
-        slamDamage: 10,    // per wall hit
+        slamDamage: 7,     // per wall hit, only while on the hook
         slamCooldown: 0.3, // seconds between slams on the same ball
-        fling: 1.5,        // seconds after the throw that wall hits still count as slams
         cooldown: 2,       // seconds before the hook can catch again
       },
     },
@@ -1205,7 +1204,7 @@
       zoneStrand: null, zoneTick: 0, inZone: false,
       segs: [], path: [], snakeBounces: 0, segCd: 0,
       hookAng: side === 0 ? -0.6 : Math.PI - 0.6, hookCd: 0, hooking: null, hookT: 0,
-      hookedBy: null, flung: 0, flungBy: null, slamCd: 0,
+      hookedBy: null, slamCd: 0,
       // slime / healer
       gen: 0,
       healT: t.healer ? t.healer.everyMin : 0,
@@ -1743,7 +1742,6 @@
     if (hit && ball.type.chains) chainWallHit(ball, hit);
     if (hit && ball.type.zone) zoneWallHit(ball, hit);
     if (hit && ball.type.snake) snakeWallHit(ball);
-    if (hit && ball.flung > 0 && ball.flungBy) slamWall(ball, ball.flungBy, hit.x, hit.y);
     if (hit && ball.bleed > 0 && ball.bleedCd <= 0 && ball.bleedSrc) {
       ball.bleedCd = 0.2;
       hurt(ball, ball.bleedSrc.type.glass.bleedDamage, ball.bleedSrc, '#c0203a');
@@ -2714,7 +2712,7 @@
     return { x: b.x + Math.cos(b.hookAng) * reach, y: b.y + Math.sin(b.hookAng) * reach };
   }
 
-  // A swung or flung ball hits a wall.
+  // A ball on the hook hits a wall.
   function slamWall(v, owner, wx, wy) {
     if (v.slamCd > 0 || !v.alive) return;
     const cfg = owner.type.hook;
@@ -2732,9 +2730,7 @@
     if (!v) return;
     v.hookedBy = null;
     if (fling && v.alive) {
-      v.flung = b.type.hook.fling;
-      v.flungBy = b;
-      clampSpeed(v);
+      clampSpeed(v);   // thrown along the swing; the walls no longer hurt once it's off the hook
       popups.push({ x: v.x, y: v.y - 8, text: 'FLING!', t: 0, color: '#d9b27a' });
     }
   }
@@ -2774,7 +2770,6 @@
       b.hooking = o;
       b.hookT = cfg.hold;
       o.hookedBy = b;
-      o.flung = 0;
       hurt(o, cfg.catchDamage, b, '#d9b27a');
       popups.push({ x: o.x, y: o.y - 8, text: 'HOOKED!', t: 0, color: '#d9b27a' });
       burst(tip.x, tip.y, { light: '#ffffff', base: '#e4e8ee', dark: '#7a5228' }, 8);
@@ -2815,7 +2810,6 @@
         updateSnake(b, dt);
         updateHook(b, dt);
         b.slamCd = Math.max(0, b.slamCd - dt);
-        b.flung = Math.max(0, b.flung - dt);
         b.chill = Math.max(0, b.chill - dt);
       }
       for (const sp of spikes) sp.t += dt;
