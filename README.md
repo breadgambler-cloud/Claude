@@ -26,8 +26,10 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | Ghost Ball | 100 | 9 |
 | Lightning Ball | 100 | 4, zap 6 |
 | Ice Ball | 100 | 7 |
-| Shocker Ball | 100 | 7, shock 6 |
+| Shocker Ball | 100 | 6, shock 4 |
 | Chained Ball | 100 | 8 |
+| Slime Ball | 100 (then 15, then 3) | 7 (then 5, then 3) |
+| Healer Ball | 100 | 6, enemy grabbing a heal takes 8 |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
 When two axes meet they clang off each other and both reverse direction.
@@ -66,10 +68,16 @@ The Lightning Ball strikes the enemy with lightning every 3 seconds for 6 damage
 
 The Ice Ball's hits chill the enemy, who moves at half speed for 2 seconds.
 
-The Shocker Ball charges up with blue electricity for 1.5 seconds, every 3 seconds. If the enemy hits it while it's
-charged (body, axe or bite), the enemy takes 6 damage and is stunned for 1.5 seconds: frozen in place and unable to
+The Shocker Ball charges up with blue electricity for 1 second, every 4.5 seconds. If the enemy hits it while it's
+charged (body, axe or bite), the enemy takes 4 damage and is stunned for 1 second: frozen in place and unable to
 deal any damage.
 
 Every wall the Chained Ball hits gives it a chain anchored to that spot (up to 3 chains at once). Each hit on the
 enemy locks one held chain onto them, reeling them toward that wall. A chained ball can't move farther from the anchor
 than the chain allows. Locked chains stay on until all 3 are locked; then they hold for 3 seconds and all break.
+
+The Slime Ball splits when hurt. Under 30 HP it pops into two slimes with 15 HP each. When one of those drops under
+5 HP, it pops into two tiny slimes with 3 HP each. A side only loses when all of its balls are gone.
+
+The Healer Ball drops a heal at a random spot every 2.5–4 seconds (up to 3 at a time, each lasting 10 seconds). If the
+Healer Ball picks it up, it heals 12 HP. If the enemy touches it, the enemy takes 8 damage instead.

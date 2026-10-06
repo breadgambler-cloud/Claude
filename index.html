@@ -269,7 +269,7 @@
       name: 'SHOCKER BALL',
       short: 'SHOCKER',
       hp: 100,
-      damage: 7,
+      damage: 6,
       mass: 1,
       radius: 12,
       speed: 130,
@@ -277,7 +277,7 @@
       coil: true,    // copper coil bands
       // Every so often it charges up with blue electricity. If the enemy hits it
       // while charged, the enemy is shocked and stunned: frozen and unable to deal damage.
-      shocker: { every: 3, charge: 1.5, stun: 1.5, damage: 6 },
+      shocker: { every: 4.5, charge: 1, stun: 1, damage: 4 },
     },
     chained: {
       name: 'CHAINED BALL',
@@ -299,6 +299,39 @@
         reel: 90,      // pixels per second the chain pulls in
         minLen: 26,    // closest the chain drags them to the wall
       },
+    },
+    slime: {
+      name: 'SLIME BALL',
+      short: 'SLIME',
+      hp: 100,
+      damage: 7,
+      mass: 1,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#c6f9a8', base: '#5fd35a', dark: '#2f9e3a', rim: '#14501c' },
+      goo: true,     // jelly bubbles
+      // Hurt it enough and it splits in two, and the halves split again.
+      // Generation 0 is the big slime; each split makes two of the next generation.
+      slime: {
+        splitBelow: [30, 5],   // a gen-0 slime splits under 30 HP, a gen-1 slime under 5 HP
+        hp: [100, 15, 3],      // HP of each generation
+        radius: [12, 9, 6],
+        damage: [7, 5, 3],
+      },
+    },
+    healer: {
+      name: 'HEALER BALL',
+      short: 'HEALER',
+      hp: 100,
+      damage: 6,
+      mass: 1,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#ffffff', base: '#eef0f5', dark: '#c3c7d3', rim: '#6f7486' },
+      cross: true,   // red medic cross
+      // Every so often a heal drops somewhere random. The Healer Ball's side heals
+      // from it; if the enemy grabs it, it hurts them instead.
+      healer: { everyMin: 2.5, everyMax: 4, heal: 12, damage: 8, max: 3, life: 10 },
     },
   };
   const BALL_ORDER = Object.keys(BALL_TYPES);
@@ -482,6 +515,19 @@
           g.fillRect(x - 1, y, 2, 1);
         }
       }
+    }
+    if (type.goo) {
+      // bubbles floating in the jelly
+      for (const [bx, by, br] of [[-6, -4, 2], [5, 4, 2], [-3, 7, 1], [7, -6, 1], [-8, 3, 1]]) {
+        g.fillStyle = '#c6f9a8'; g.fillRect(r + bx, r + by, br, br);
+        g.fillStyle = '#ffffff'; g.fillRect(r + bx, r + by, 1, 1);
+      }
+    }
+    if (type.cross) {
+      // red medic cross with a dark outline
+      g.fillStyle = '#7a1020'; g.fillRect(r - 3, r - 9, 7, 19); g.fillRect(r - 9, r - 3, 19, 7);
+      g.fillStyle = '#e8283c'; g.fillRect(r - 2, r - 8, 5, 17); g.fillRect(r - 8, r - 2, 17, 5);
+      g.fillStyle = '#ff7a8a'; g.fillRect(r - 2, r - 8, 1, 6); g.fillRect(r - 8, r - 2, 6, 1);
     }
     if (type.links) {
       // two chains wrapped around the ball, crossing in an X. Each band bows a little
@@ -675,6 +721,7 @@
   let effects = [];   // explosions and lightning bolts
   let miniBombs = [];
   let chains = [];   // {owner, ax, ay, target, t, len}
+  let heals = [];    // heal pickups dropped by the Healer Ball
   const picks = ['normal', 'normal'];   // ball type for YOU and CPU
   let hoverCard = -1;
 
@@ -710,9 +757,28 @@
       shockT: t.shocker ? t.shocker.every : 0, charged: 0, stunned: false,
       // chained
       chainCd: 0, chainT: 0,
+      // slime / healer
+      gen: 0,
+      healT: t.healer ? t.healer.everyMin : 0,
     };
     if (t.rng) rollRng(ball);   // the first roll starts at launch
     return ball;
+  }
+
+  // The nearest living enemy of `b` (sides can have several balls once a slime splits).
+  function foeOf(b) {
+    let best = null, bd = Infinity;
+    for (const o of balls) {
+      if (!o.alive || o.side === b.side) continue;
+      const d = Math.hypot(o.x - b.x, o.y - b.y);
+      if (d < bd) { bd = d; best = o; }
+    }
+    return best;
+  }
+
+  // The ball to show in a side's panel: its first living ball, or its first ball if all are gone.
+  function sideBall(side) {
+    return balls.find(b => b.side === side && b.alive) || balls.find(b => b.side === side);
   }
 
   function randInt(min, max) { return min + Math.floor(Math.random() * (max - min + 1)); }
@@ -784,6 +850,7 @@
     effects = [];
     miniBombs = [];
     chains = [];
+    heals = [];
     state = 'aim';      // select -> aim -> fight -> over
     winner = null;
     shake = 0;
@@ -884,11 +951,42 @@
       shake = 0.35;
       burst(ball.x, ball.y, { light: '#ffffff', base: '#d6a8ff', dark: '#7a3fc4' }, 30);
     }
+    const sl = ball.type.slime;
+    if (sl && ball.gen < sl.splitBelow.length && ball.hp < sl.splitBelow[ball.gen]) {
+      splitSlime(ball);
+      return amount;
+    }
     if (ball.hp <= 0) {
       ball.alive = false;
       burst(ball.x, ball.y, ball.type.colors, 26);
     }
     return amount;
+  }
+
+  // A hurt slime pops into two smaller slimes of the next generation.
+  function splitSlime(ball) {
+    const sl = ball.type.slime;
+    const gen = ball.gen + 1;
+    ball.alive = false;
+    if (ball.latch) ball.latch = null;
+    burst(ball.x, ball.y, ball.type.colors, 18);
+    popups.push({ x: ball.x, y: ball.y - ball.r - 12, text: 'SPLIT!', t: -0.1, color: '#c6f9a8' });
+    const sp = Math.hypot(ball.vx, ball.vy) || ball.type.speed;
+    const heading = Math.atan2(ball.vy, ball.vx) || Math.random() * Math.PI * 2;
+    for (const k of [-1, 1]) {
+      const a = heading + k * 0.9;
+      const r = sl.radius[gen];
+      const child = makeBall('slime', ball.x - Math.sin(heading) * k * r, ball.y + Math.cos(heading) * k * r, ball.side);
+      child.gen = gen;
+      child.hp = child.maxHp = sl.hp[gen];
+      child.r = r;
+      child.x = Math.max(PLAY.left + r, Math.min(PLAY.right - r, child.x));
+      child.y = Math.max(PLAY.top + r, Math.min(PLAY.bottom - r, child.y));
+      child.vx = Math.cos(a) * sp; child.vy = Math.sin(a) * sp;
+      child.squash = 0.15;
+      clampSpeed(child);
+      balls.push(child);
+    }
   }
 
   // Damage this ball deals on contact. The RNG Ball deals nothing while its
@@ -900,6 +998,7 @@
   }
 
   function baseDamage(ball) {
+    if (ball.type.slime) return ball.type.slime.damage[ball.gen];
     const range = ball.type.damageRange;
     if (range) return randInt(range[0], range[1]);
     if (!ball.type.rng) return ball.type.damage;
@@ -972,6 +1071,13 @@
     // only react if they are moving toward each other
     const rel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
     if (rel <= 0) return;
+
+    // teammates (split slimes) just bounce off each other
+    if (a.side === b.side) {
+      if (a.stuck <= 0) { a.vx -= rel * nx; a.vy -= rel * ny; clampSpeed(a); }
+      if (b.stuck <= 0) { b.vx += rel * nx; b.vy += rel * ny; clampSpeed(b); }
+      return;
+    }
 
     // hitting a charged shocker stuns you (and a stunned ball deals no damage)
     shockCheck(a, b);
@@ -1049,7 +1155,7 @@
 
   function axeHits(a, b) {
     const w = a.type.weapon;
-    if (!w || !a.alive || !b.alive || a.weaponCd > 0) return;
+    if (!w || !a.alive || !b.alive || a.weaponCd > 0 || a.side === b.side) return;
     const blade = axeContact(a, b);
     if (!blade) return;
 
@@ -1236,8 +1342,8 @@
   function updateVampire(v, dt) {
     const cfg = v.type.vampire;
     if (!cfg || !v.alive) return;
-    const foe = balls[1 - v.side];
     if (v.latch) {
+      const foe = v.latch.target;   // keep riding the ball it bit
       if (!foe.alive || foe.phased) { detach(v); return; }
       const L = v.latch;
       L.t -= dt; L.tick -= dt;
@@ -1268,6 +1374,7 @@
       return;
     }
     v.latchCd = Math.max(0, v.latchCd - dt);
+    const foe = foeOf(v);
     // swing the fangs toward the enemy
     if (foe && foe.alive) {
       const want = Math.atan2(foe.y - v.y, foe.x - v.x);
@@ -1349,6 +1456,49 @@
       }
     }
     chains = chains.filter(c => !c.done && c.owner.alive);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Healer: drops heals at random spots. Friends heal, enemies get hurt.
+  // ---------------------------------------------------------------------------
+  function updateHealer(b, dt) {
+    const cfg = b.type.healer;
+    if (!cfg || !b.alive) return;
+    b.healT -= dt;
+    if (b.healT > 0) return;
+    b.healT = cfg.everyMin + Math.random() * (cfg.everyMax - cfg.everyMin);
+    if (heals.filter(h => h.owner === b).length >= cfg.max) return;
+    const pad = 10;
+    heals.push({
+      owner: b, t: 0,
+      x: PLAY.left + pad + Math.random() * (PLAY.right - PLAY.left - pad * 2),
+      y: PLAY.top + pad + Math.random() * (PLAY.bottom - PLAY.top - pad * 2),
+    });
+  }
+
+  function updateHeals(dt) {
+    for (const h of heals) {
+      h.t += dt;
+      const cfg = h.owner.type.healer;
+      if (h.t > cfg.life) { h.done = true; continue; }
+      if (h.t < 0.3) continue;   // not grabbable while it's still popping in
+      for (const b of balls) {
+        if (!b.alive || b.phased || Math.hypot(b.x - h.x, b.y - h.y) > b.r + 5) continue;
+        if (b.side === h.owner.side) {
+          const got = Math.min(cfg.heal, b.maxHp - b.hp);
+          b.hp += got;
+          popups.push({ x: b.x, y: b.y - b.r - 4, text: '+' + got, t: 0, color: '#5ee07a' });
+          burst(h.x, h.y, { light: '#ffffff', base: '#8af5a0', dark: '#3fbf63' }, 10);
+        } else {
+          hurt(b, cfg.damage, h.owner, '#ff4f6d');
+          popups.push({ x: b.x, y: b.y - b.r - 12, text: 'OUCH!', t: -0.1, color: '#ff4f6d' });
+          burst(h.x, h.y, { light: '#ffffff', base: '#ff8a9a', dark: '#c0203a' }, 12);
+        }
+        h.done = true;
+        break;
+      }
+    }
+    heals = heals.filter(h => !h.done);
   }
 
   // ---------------------------------------------------------------------------
@@ -1466,7 +1616,7 @@
     b.zapT -= dt;
     if (b.zapT > 0) return;
     b.zapT = cfg.every;
-    const foe = balls[1 - b.side];
+    const foe = foeOf(b);
     if (!foe || !foe.alive) return;
     // a jagged bolt from the ball to the enemy
     const pts = [{ x: b.x, y: b.y }];
@@ -1572,11 +1722,13 @@
         updateGhost(b, dt);
         updateZap(b, dt);
         updateShocker(b, dt);
+        updateHealer(b, dt);
         b.chill = Math.max(0, b.chill - dt);
       }
       for (const sp of spikes) sp.t += dt;
       updateMiniBombs(dt);
       updateChains(dt);
+      updateHeals(dt);
       for (let i = 0; i < balls.length; i++)
         for (let j = i + 1; j < balls.length; j++) {
           const a = balls[i], b = balls[j];
@@ -1593,7 +1745,7 @@
       updateWebs(dt);
 
       const alive = balls.filter(b => b.alive);
-      if (alive.length <= 1) {
+      if (new Set(alive.map(b => b.side)).size <= 1) {   // one side (or nobody) left
         state = 'over';
         winner = alive[0] || null;
         roundTimer = 0;
@@ -1858,6 +2010,31 @@
     }
   }
 
+  // Heal pickups: a glowing green cross that bobs and blinks before it fades out.
+  function drawHeals() {
+    for (const h of heals) {
+      const cfg = h.owner.type.healer;
+      const left = cfg.life - h.t;
+      if (left < 2 && Math.floor(performance.now() / 100) % 2) continue;   // blink when about to vanish
+      const pop = Math.min(1, h.t / 0.2);
+      const y = Math.round(h.y + Math.sin(performance.now() / 250 + h.x) * 1.5);
+      const x = Math.round(h.x);
+      ctx.globalAlpha = 0.25 * pop;
+      ctx.fillStyle = '#8af5a0';
+      for (let dy = -6; dy <= 6; dy++) {
+        const w2 = Math.floor(Math.sqrt(36 - dy * dy));
+        ctx.fillRect(x - w2, y + dy, w2 * 2 + 1, 1);
+      }
+      ctx.globalAlpha = 1;
+      const a = Math.round(3 * pop), bw = Math.max(1, Math.round(pop));
+      ctx.fillStyle = '#14501c';
+      ctx.fillRect(x - a - 1, y - bw - 1, a * 2 + 3, bw * 2 + 3); ctx.fillRect(x - bw - 1, y - a - 1, bw * 2 + 3, a * 2 + 3);
+      ctx.fillStyle = '#5ee07a';
+      ctx.fillRect(x - a, y - bw, a * 2 + 1, bw * 2 + 1); ctx.fillRect(x - bw, y - a, bw * 2 + 1, a * 2 + 1);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(x - bw, y - a, 1, 1);
+    }
+  }
+
   // Mini bombs: a small bomb with a lit fuse, and a blinking ring showing its huge blast.
   function drawMiniBombs() {
     for (const mb of miniBombs) {
@@ -2060,8 +2237,10 @@
   function drawBall(b) {
     if (!b.alive) return;
     const spr = b.type.sprite;
-    const s = 1 + b.squash * 1.2;
-    const w = Math.round(spr.width * s), h = Math.round(spr.height / s);
+    const wobble = b.type.slime ? Math.sin(performance.now() / 120 + b.x * 0.1) * 0.06 : 0;   // slimes jiggle
+    const s = 1 + b.squash * 1.2 + wobble;
+    const k = b.r / b.type.radius;   // split slimes are smaller
+    const w = Math.round(spr.width * s * k), h = Math.round(spr.height / s * k);
     const x = Math.round(b.x - w / 2), y = Math.round(b.y - h / 2);
     // ground shadow
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
@@ -2152,7 +2331,7 @@
       ctx.fillStyle = '#7fc8ff'; ctx.fillRect(sx, by - 2, 1, 8);
     }
     // facing an Execute Ball: mark the kill line on this bar
-    const foe = balls[1 - ball.side];
+    const foe = foeOf(ball) || balls.find(o => o.side !== ball.side);
     if (foe && foe.type.execute) {
       const tx = bx + Math.round(bw * foe.type.execute.below);
       ctx.fillStyle = '#d6a8ff'; ctx.fillRect(tx, by - 2, 1, 8);
@@ -2178,6 +2357,11 @@
     }
     if (t.ghost) info.push([(ball.phased ? 'FADED ' : 'SOLID ') + Math.max(0, ball.phaseT).toFixed(1) + 'S', ball.phased ? '#ffffff' : '#b9b0d6']);
     if (t.zap) info.push(['ZAP IN ' + Math.max(0, ball.zapT).toFixed(1) + 'S', '#ffe14d']);
+    if (t.slime) {
+      const n = balls.filter(b => b.side === ball.side && b.alive).length;
+      info.push(['SLIMES ' + n + '  SPLIT ' + (ball.gen < t.slime.splitBelow.length ? 'UNDER ' + t.slime.splitBelow[ball.gen] : 'DONE'), '#c6f9a8']);
+    }
+    if (t.healer) info.push(['HEALS ' + heals.filter(h => h.owner === ball).length + '/' + t.healer.max, '#5ee07a']);
     if (t.chains) {
       const mine = chains.filter(c => c.owner === ball);
       info.push(['CHAINS ' + mine.length + '/' + t.chains.max + ' (' + mine.filter(c => c.target).length + ' ON)', '#c9ced6']);
@@ -2255,6 +2439,34 @@
     }
   }
 
+  // One short line describing a ball's special, for its card.
+  function abilityText(t) {
+    if (t.weapon) return ['AXE ' + t.weapon.damage, '#ffb03b'];
+    if (t.web) return ['WEB DMG ' + t.web.damage, '#e6e9f2'];
+    if (t.shield) return ['SHLD ' + Math.round(t.shield.reduction * 100) + '%', '#7fc8ff'];
+    if (t.execute) return ['KILL <' + Math.round(t.execute.below * 100) + '%', '#d6a8ff'];
+    if (t.rng) return ['ROLL ' + t.rng.spinTime + 'S', '#9fb6dc'];
+    if (t.spikes) return ['SPIKE ' + t.spikes.medium.damage + '-' + t.spikes.big.damage, '#e4e8ee'];
+    if (t.vampire) return ['DRAIN ' + (t.vampire.drain / t.vampire.tickEvery) + '/S', '#ff4f6d'];
+    if (t.bomb) return ['BOOM ' + t.bomb.damage, '#ffb03b'];
+    if (t.ghost) return ['FADE ' + t.ghost.faded + 'S', '#e6e0f5'];
+    if (t.zap) return ['ZAP ' + t.zap.damage + '/' + t.zap.every + 'S', '#ffe14d'];
+    if (t.freeze) return ['SLOW ' + t.freeze.time + 'S', '#9fe3f5'];
+    if (t.shocker) return ['STUN ' + t.shocker.stun + 'S', '#7fd8ff'];
+    if (t.chains) return ['CHAIN ' + t.chains.hold + 'S', '#c9ced6'];
+    if (t.slime) return ['SPLITS X2', '#c6f9a8'];
+    if (t.healer) return ['HEAL ' + t.healer.heal, '#5ee07a'];
+    return ['', '#ffffff'];
+  }
+
+  // Tiny 5x5 icons for the compact cards.
+  const HEART_ICON = ['01010', '11111', '11111', '01110', '00100'];
+  const SWORD_ICON = ['00001', '00010', '10100', '01000', '10100'];
+  function drawIcon(rows, x, y, color) {
+    ctx.fillStyle = color;
+    rows.forEach((row, ry) => [...row].forEach((ch, rx) => { if (ch === '1') ctx.fillRect(x + rx, y + ry, 1, 1); }));
+  }
+
   function drawSelect() {
     // the pick screen covers the whole view
     ctx.fillStyle = 'rgba(8,14,30,0.82)';
@@ -2291,48 +2503,54 @@
       if (c.key === RANDOM) {
         // a big question mark with a dice-ish wobble when hovered
         const wob = hot ? Math.round(Math.sin(performance.now() / 90) * 1.5) : 0;
-        drawText('?', c.x + 10 + wob, y + Math.floor(c.h / 2) - 8, '#ffd23f', 3);
-        drawText('RANDOM', c.x + 33, y + 5, '#ffffff');
-        drawText('ANY BALL', c.x + 33, y + 13, '#9fb6dc');
-        drawText('KEY 0', c.x + 33, y + 21, hot ? '#ffd23f' : '#7f93b8');
+        const big = c.h >= 30 ? 3 : 2;
+        drawText('?', c.x + 10 + wob, y + Math.floor(c.h / 2) - Math.floor(5 * big / 2), '#ffd23f', big);
+        const tx = c.x + (big === 3 ? 33 : 27), ty = y + (big === 3 ? 5 : 3);
+        drawText('RANDOM', tx, ty, '#ffffff');
+        drawText('ANY BALL', tx, ty + 7, '#9fb6dc');
+        drawText('KEY 0', tx, ty + 14, hot ? '#ffd23f' : '#7f93b8');
         return;
       }
-      // ball (with weapon) on the left
-      const cx = c.x + 16, cy = y + Math.floor(c.h / 2);
+      // ball (with weapon) on the left; smaller on compact cards
+      const compact = c.h < 30;
+      const k = compact ? 0.8 : 1;
+      const cx = c.x + (compact ? 13 : 16), cy = y + Math.floor(c.h / 2) + (compact ? 1 : 0);
+      const rr = t.radius * k;
       ctx.save();
-      ctx.beginPath(); ctx.rect(c.x, y, 32, c.h); ctx.clip();
+      ctx.beginPath(); ctx.rect(c.x, y, compact ? 26 : 32, c.h); ctx.clip();
       if (t.weapon) {
         const ang = -Math.PI * 0.75 - (hot ? performance.now() / 300 : 0);
-        drawAxe(cx, cy, ang, 1, 0.5);
+        drawAxe(cx, cy, ang, 1, 0.5 * k);
       }
-      if (t.legs) drawLegs(cx, cy, t.radius, hot ? performance.now() / 120 : 0);
-      if (t.studs) drawStuds(cx, cy, t.radius, hot ? performance.now() / 300 : 0);
-      if (t.fangs) drawFangs(cx, cy, t.radius, 0, hot);
-      if (t.cap) drawFuse(cx, cy, t.radius, hot ? 0.5 : 9);
-      ctx.drawImage(t.sprite, cx - t.radius, cy - t.radius);
-      if (t.fangs) drawVampEyes(cx, cy, t.radius, 0);
+      if (t.legs) drawLegs(cx, cy, rr, hot ? performance.now() / 120 : 0);
+      if (t.studs) drawStuds(cx, cy, rr, hot ? performance.now() / 300 : 0);
+      if (t.fangs) drawFangs(cx, cy, rr, 0, hot);
+      if (t.cap) drawFuse(cx, cy, rr, hot ? 0.5 : 9);
+      ctx.drawImage(t.sprite, Math.round(cx - rr), Math.round(cy - rr), Math.round(t.sprite.width * k), Math.round(t.sprite.height * k));
+      if (t.fangs) drawVampEyes(cx, cy, rr, 0);
       ctx.restore();
-      drawText(String(i + 1), c.x + 2, y + 3, hot ? '#ffd23f' : '#7f93b8');   // its number key
+      drawText(String(i + 1), c.x + 2, y + 2, hot ? '#ffd23f' : '#7f93b8');   // its number key
       // stats on the right
-      const tx = c.x + 33, ty = y + Math.max(2, Math.floor((c.h - 28) / 2));
-      drawText(t.short, tx, ty, '#ffffff');
-      drawText('HP ' + t.hp, tx, ty + 8, '#5ee07a');
       const hit = t.rng ? t.rng.min + '-' + t.rng.max
         : t.damageRange ? t.damageRange[0] + '-' + t.damageRange[1] : String(t.damage);
-      drawText('HIT ' + hit, tx, ty + 16, t.rng ? '#ffd23f' : '#ff8a8a');
-      if (t.weapon) drawText('AXE ' + t.weapon.damage, tx, ty + 24, '#ffb03b');
-      if (t.web) drawText('WEB DMG ' + t.web.damage, tx, ty + 24, '#e6e9f2');
-      if (t.shield) drawText('SHLD ' + Math.round(t.shield.reduction * 100) + '%', tx, ty + 24, '#7fc8ff');
-      if (t.execute) drawText('KILL <' + Math.round(t.execute.below * 100) + '%', tx, ty + 24, '#d6a8ff');
-      if (t.rng) drawText('ROLL ' + t.rng.spinTime + 'S', tx, ty + 24, '#9fb6dc');
-      if (t.spikes) drawText('SPIKE ' + t.spikes.medium.damage + '-' + t.spikes.big.damage, tx, ty + 24, '#e4e8ee');
-      if (t.vampire) drawText('DRAIN ' + (t.vampire.drain / t.vampire.tickEvery) + '/S', tx, ty + 24, '#ff4f6d');
-      if (t.bomb) drawText('BOOM ' + t.bomb.damage, tx, ty + 24, '#ffb03b');
-      if (t.ghost) drawText('FADE ' + t.ghost.faded + 'S', tx, ty + 24, '#e6e0f5');
-      if (t.zap) drawText('ZAP ' + t.zap.damage + '/' + t.zap.every + 'S', tx, ty + 24, '#ffe14d');
-      if (t.freeze) drawText('SLOW ' + t.freeze.time + 'S', tx, ty + 24, '#9fe3f5');
-      if (t.shocker) drawText('STUN ' + t.shocker.stun + 'S', tx, ty + 24, '#7fd8ff');
-      if (t.chains) drawText('CHAIN ' + t.chains.hold + 'S', tx, ty + 24, '#c9ced6');
+      const [abilityTxt, abilityCol] = abilityText(t);
+      if (compact) {
+        // three lines: name / heart HP + sword damage / ability
+        const tx = c.x + 27, ty = y + Math.max(2, Math.floor((c.h - 19) / 2));
+        drawText(t.short, tx, ty, '#ffffff');
+        drawIcon(HEART_ICON, tx, ty + 7, '#ff4f6d');
+        drawText(String(t.hp), tx + 6, ty + 7, '#5ee07a');
+        const sx = tx + 6 + textWidth(String(t.hp)) + 3;
+        drawIcon(SWORD_ICON, sx, ty + 7, '#c9ced6');
+        drawText(hit, sx + 6, ty + 7, t.rng ? '#ffd23f' : '#ff8a8a');
+        if (abilityTxt) drawText(abilityTxt, tx, ty + 14, abilityCol);
+      } else {
+        const tx = c.x + 33, ty = y + Math.max(2, Math.floor((c.h - 28) / 2));
+        drawText(t.short, tx, ty, '#ffffff');
+        drawText('HP ' + t.hp, tx, ty + 8, '#5ee07a');
+        drawText('HIT ' + hit, tx, ty + 16, t.rng ? '#ffd23f' : '#ff8a8a');
+        if (abilityTxt) drawText(abilityTxt, tx, ty + 24, abilityCol);
+      }
     });
   }
 
@@ -2357,6 +2575,7 @@
       drawSpikes();
       drawMiniBombs();
       drawChains();
+      drawHeals();
       for (const b of balls) drawWeapon(b);
       for (const b of balls) drawBallWithFlash(b);
       for (const b of balls) drawWrap(b);
@@ -2385,8 +2604,8 @@
     // HUD (not shaken)
     if (state === 'select') drawSelect();
     else {
-      drawPanel(balls[0], 8, false);
-      drawPanel(balls[1], W - 8, true);
+      drawPanel(sideBall(0), 8, false);
+      drawPanel(sideBall(1), W - 8, true);
     }
     drawTextCentered('BALL VS BALL', W / 2, 3, '#ffffff', 1);
 
