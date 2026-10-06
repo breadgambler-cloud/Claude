@@ -413,6 +413,21 @@
       // box is crossed off. Hits in crossed-off boxes only do its normal 5.
       wcd: { size: 5, min: 1, max: 75, high: 50, minHigh: 2 },
     },
+    zone: {
+      name: 'ZONE BALL',
+      short: 'ZONE',
+      hp: 100,
+      damage: 6,
+      mass: 1,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#ff7a7a', base: '#d62a2a', dark: '#8e1414', rim: '#3d0606' },
+      zoneMark: true,
+      // Like the Spider Ball's strands: touch a wall, then a different wall, and the line
+      // between them cuts the arena in two. The smaller side becomes a red zone, and any
+      // enemy inside it takes damage for as long as it stays there.
+      zone: { damage: 2, tick: 0.5, life: 10, max: 5 },
+    },
   };
   const BALL_ORDER = Object.keys(BALL_TYPES);
 
@@ -594,6 +609,15 @@
           const x = Math.round(r + x0 + (x1 - x0) * k / n), y = Math.round(r + y0 + (y1 - y0) * k / n);
           g.fillRect(x - 1, y, 2, 1);
         }
+      }
+    }
+    if (type.zoneMark) {
+      // a white dashed box: the zone symbol
+      g.fillStyle = '#ffffff';
+      for (let k = -6; k <= 6; k++) {
+        if ((k + 6) % 3 === 2) continue;
+        g.fillRect(r + k, r - 6, 1, 1); g.fillRect(r + k, r + 6, 1, 1);
+        g.fillRect(r - 6, r + k, 1, 1); g.fillRect(r + 6, r + k, 1, 1);
       }
     }
     if (type.hat) {
@@ -850,6 +874,7 @@
   let heals = [];    // heal pickups dropped by the Healer Ball
   let shards = [];   // glass shards
   let bullets = [];  // gunslinger bullets
+  let zones = [];    // Zone Ball zones: {owner, poly, t}
   let grid = null;   // the WCD ball's numbered grid: {cells: [{n, used}]}
   const picks = ['normal', 'normal'];   // ball type for YOU and CPU
   let hoverCard = -1;
@@ -891,6 +916,7 @@
       bleed: 0, bleedSrc: null, bleedCd: 0,
       inflate: 0,
       gunAng: side === 0 ? 0 : Math.PI, reload: t.gun ? 0.5 : 0, muzzle: 0,
+      zoneStrand: null, zoneTick: 0, inZone: false,
       // slime / healer
       gen: 0,
       healT: t.healer ? t.healer.everyMin : 0,
@@ -1003,6 +1029,7 @@
     heals = [];
     shards = [];
     bullets = [];
+    zones = [];
     grid = balls.some(b => b.type.wcd) ? makeGrid(balls.find(b => b.type.wcd).type.wcd) : null;
     state = 'aim';      // select -> aim -> fight -> over
     winner = null;
@@ -1424,6 +1451,7 @@
     if (hit && ball.type.web) spiderTouchWall(ball, hit);
     if (hit && ball.type.spikes) growSpike(ball, hit);
     if (hit && ball.type.chains) chainWallHit(ball, hit);
+    if (hit && ball.type.zone) zoneWallHit(ball, hit);
     if (hit && ball.bleed > 0 && ball.bleedCd <= 0 && ball.bleedSrc) {
       ball.bleedCd = 0.2;
       hurt(ball, ball.bleedSrc.type.glass.bleedDamage, ball.bleedSrc, '#c0203a');
@@ -1670,6 +1698,125 @@
       }
     }
     chains = chains.filter(c => !c.done && c.owner.alive);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Zone Ball: a wall-to-wall line cuts off the smaller part of the arena as a zone
+  // ---------------------------------------------------------------------------
+  // Position of a wall point measured clockwise around the arena edge from the top-left corner.
+  function edgeT(x, y) {
+    const w = PLAY.right - PLAY.left, h = PLAY.bottom - PLAY.top;
+    if (Math.abs(y - PLAY.top) < 0.5) return x - PLAY.left;
+    if (Math.abs(x - PLAY.right) < 0.5) return w + (y - PLAY.top);
+    if (Math.abs(y - PLAY.bottom) < 0.5) return w + h + (PLAY.right - x);
+    return 2 * w + h + (PLAY.bottom - y);
+  }
+
+  function polyArea(poly) {
+    let a = 0;
+    for (let i = 0; i < poly.length; i++) {
+      const p1 = poly[i], p2 = poly[(i + 1) % poly.length];
+      a += p1.x * p2.y - p2.x * p1.y;
+    }
+    return Math.abs(a) / 2;
+  }
+
+  function pointInPoly(x, y, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[i], b = poly[j];
+      if ((a.y > y) !== (b.y > y) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+    }
+    return inside;
+  }
+
+  // The two pieces the line A-B cuts the arena into; returns the smaller one.
+  function smallerSide(A, B) {
+    const w = PLAY.right - PLAY.left, h = PLAY.bottom - PLAY.top, per = 2 * (w + h);
+    const corners = [
+      { x: PLAY.left, y: PLAY.top, t: 0 }, { x: PLAY.right, y: PLAY.top, t: w },
+      { x: PLAY.right, y: PLAY.bottom, t: w + h }, { x: PLAY.left, y: PLAY.bottom, t: 2 * w + h },
+    ];
+    const tA = edgeT(A.x, A.y), tB = edgeT(B.x, B.y);
+    const walk = (from, to, P, Q) => {
+      // go clockwise from P to Q, collecting the corners passed
+      const poly = [P];
+      const span = (to - from + per) % per;
+      corners
+        .map(c => ({ c, d: (c.t - from + per) % per }))
+        .filter(o => o.d > 0 && o.d < span)
+        .sort((u, v) => u.d - v.d)
+        .forEach(o => poly.push(o.c));
+      poly.push(Q);
+      return poly;
+    };
+    const p1 = walk(tA, tB, A, B), p2 = walk(tB, tA, B, A);
+    return polyArea(p1) <= polyArea(p2) ? p1 : p2;
+  }
+
+  function zoneWallHit(owner, hit) {
+    const cfg = owner.type.zone;
+    if (!owner.zoneStrand || owner.zoneStrand.wall === hit.wall) {
+      owner.zoneStrand = { x: hit.x, y: hit.y, wall: hit.wall };
+      return;
+    }
+    const poly = smallerSide(owner.zoneStrand, hit);
+    zones.push({ owner, poly, t: 0, a: { x: owner.zoneStrand.x, y: owner.zoneStrand.y }, b: { x: hit.x, y: hit.y } });
+    while (zones.filter(z => z.owner === owner).length > cfg.max) zones.splice(zones.findIndex(z => z.owner === owner), 1);
+    owner.zoneStrand = null;
+    popups.push({ x: hit.x, y: hit.y - 6, text: 'ZONE!', t: 0, color: '#ff7a7a' });
+    burst(hit.x, hit.y, { light: '#ffffff', base: '#ff7a7a', dark: '#d62a2a' }, 8);
+  }
+
+  function updateZones(dt) {
+    for (const z of zones) z.t += dt;
+    zones = zones.filter(z => z.t < z.owner.type.zone.life && z.owner.alive);
+    for (const b of balls) {
+      if (!b.alive || b.phased) continue;
+      const inside = zones.filter(z => z.owner.side !== b.side && pointInPoly(b.x, b.y, z.poly));
+      if (!inside.length) { b.zoneTick = 0.25; b.inZone = false; continue; }
+      b.inZone = true;
+      b.zoneTick -= dt;
+      if (b.zoneTick > 0) continue;
+      const cfg = inside[0].owner.type.zone;
+      b.zoneTick = cfg.tick;
+      hurt(b, cfg.damage * inside.length, inside[0].owner, '#ff4f4f');   // overlapping zones stack
+      burst(b.x, b.y + b.r * 0.5, { light: '#ffffff', base: '#ff7a7a', dark: '#d62a2a' }, 3);
+    }
+  }
+
+  function drawZones() {
+    for (const z of zones) {
+      const left = z.owner.type.zone.life - z.t;
+      const fade = Math.min(1, left / 1.5) * Math.min(1, z.t / 0.25);
+      ctx.globalAlpha = (0.14 + Math.sin(performance.now() / 200) * 0.04) * fade;
+      ctx.fillStyle = '#ff2a2a';
+      ctx.beginPath();
+      z.poly.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+      ctx.closePath();
+      ctx.fill();
+      // hazard dashes along the cutting line
+      ctx.globalAlpha = 0.9 * fade;
+      const dx = z.b.x - z.a.x, dy = z.b.y - z.a.y, len = Math.hypot(dx, dy) || 1;
+      for (let d2 = 0; d2 < len; d2 += 2) {
+        ctx.fillStyle = Math.floor(d2 / 4) % 2 ? '#ffffff' : '#ff4f4f';
+        ctx.fillRect(Math.round(z.a.x + dx / len * d2), Math.round(z.a.y + dy / len * d2), 1, 1);
+      }
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(Math.round(z.a.x) - 1, Math.round(z.a.y) - 1, 3, 3);
+      ctx.fillRect(Math.round(z.b.x) - 1, Math.round(z.b.y) - 1, 3, 3);
+    }
+    ctx.globalAlpha = 1;
+    // a line still being drawn: from the anchor to the Zone Ball
+    for (const b of balls) {
+      if (!b.alive || !b.zoneStrand) continue;
+      const a = b.zoneStrand, dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle = '#ff7a7a';
+      for (let d2 = 0; d2 < len; d2 += 3) ctx.fillRect(Math.round(a.x + dx / len * d2), Math.round(a.y + dy / len * d2), 1, 1);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(a.x) - 1, Math.round(a.y) - 1, 2, 2);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -2208,6 +2355,7 @@
       updateHeals(dt);
       updateShards(dt);
       updateBullets(dt);
+      updateZones(dt);
       for (let i = 0; i < balls.length; i++)
         for (let j = i + 1; j < balls.length; j++) {
           const a = balls[i], b = balls[j];
@@ -2918,6 +3066,8 @@
       const n = balls.filter(b => b.side === ball.side && b.alive).length;
       info.push(['SLIMES ' + n + '  SPLIT ' + (ball.gen < t.slime.splitBelow.length ? 'UNDER ' + t.slime.splitBelow[ball.gen] : 'DONE'), '#c6f9a8']);
     }
+    if (t.zone) info.push(['ZONES ' + zones.filter(z => z.owner === ball).length + '/' + t.zone.max + (ball.zoneStrand ? ' +DRAWING' : ''), '#ff7a7a']);
+    if (ball.inZone && ball.alive) info.push(['IN A ZONE!', '#ff4f4f']);
     if (t.gun) info.push(ball.reload > 0 ? ['RELOADING ' + ball.reload.toFixed(1) + 'S', '#e8c48a'] : ['LOADED', '#ffe14d']);
     if (t.wcd && grid) info.push(['BOXES LEFT ' + grid.cells.filter(c => !c.used).length + '/25', '#9fc4ff']);
     if (t.magnet) info.push(ball.pulling ? ['PULLING - BLAST IN ' + Math.max(0, ball.magT).toFixed(1) + 'S', '#7fb2ff'] : ['PULL IN ' + Math.max(0, ball.magT).toFixed(1) + 'S', '#ff7a7a']);
@@ -3006,6 +3156,7 @@
 
   // One short line describing a ball's special, for its card.
   function abilityText(t) {
+    if (t.zone) return ['IN ZONE ' + t.zone.damage, '#ff7a7a'];
     if (t.gun) return ['GUN ' + t.gun.damage, '#ffe14d'];
     if (t.wcd) return ['BOX 1-75', '#9fc4ff'];
     if (t.magnet) return ['PULL+BLAST', '#7fb2ff'];
@@ -3154,7 +3305,7 @@
     ctx.beginPath();
     ctx.rect(PLAY.left, PLAY.top, PLAY.right - PLAY.left, PLAY.bottom - PLAY.top);
     ctx.clip();
-    if (state !== 'select') drawGrid();
+    if (state !== 'select') { drawGrid(); drawZones(); }
     if (state === 'aim') for (const b of balls) drawAimArrow(b);
     if (state !== 'select') {
       drawWebs();

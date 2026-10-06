@@ -36,6 +36,7 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | Balloon Ball | 35 (up to 90) | 4 (up to 12) |
 | Gunslinger Ball | 100 | 4, bullets 7 |
 | WCD Ball | 120 | the box number (1–75), or 5 |
+| Zone Ball | 100 | 6, zones 2 every 0.5 s |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
 When two axes meet they clang off each other and both reverse direction.
@@ -107,3 +108,7 @@ The WCD Ball lays a 5x5 grid over the arena. Each box has a random number from 1
 likely, but there are always at least 2 numbers of 50 or more. When the WCD Ball hits the enemy, the enemy takes the
 number of the box it's in, and that box is crossed off. Hits in crossed-off boxes only do 5. When every box is crossed
 off, a new grid is dealt.
+
+The Zone Ball draws lines like the Spider Ball: it touches a wall, then a different wall, and the line between those spots
+cuts the arena in two. The smaller side becomes a red zone for 10 seconds (up to 5 zones at once). An enemy inside a
+zone takes 2 damage every half second for as long as it stays there, and overlapping zones stack.
