@@ -28,7 +28,7 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | Ice Ball | 100 | 7 |
 | Shocker Ball | 100 | 6, shock 4 |
 | Chained Ball | 100 | 8 |
-| Slime Ball | 75 (then 3, then 10) | 7 (then 5, then 2.5) |
+| Slime Ball | 90 (then 3, then 10) | 7 (then 5, then 2.5) |
 | Healer Ball | 100 | 6, enemy grabbing a heal takes 8 |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
@@ -76,7 +76,7 @@ Every wall the Chained Ball hits gives it a chain anchored to that spot (up to 3
 enemy locks one held chain onto them, reeling them toward that wall. A chained ball can't move farther from the anchor
 than the chain allows. Locked chains stay on until all 3 are locked; then they hold for 3 seconds and all break.
 
-The Slime Ball splits when hurt. The big slime has 75 HP and takes 50% extra damage. Under 25 HP it pops into two
+The Slime Ball splits when hurt. The big slime has 90 HP and takes 25% extra damage. Under 25 HP it pops into two
 slimes with 3 HP each. Any hit on one of those pops it into two tiny slimes with 10 HP each. The tiny slimes take
 75% less damage and deal 2.5 damage. A side only loses when all of its balls are gone.
 
