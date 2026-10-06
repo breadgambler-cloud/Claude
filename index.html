@@ -439,7 +439,24 @@
       // enemy inside it takes damage for as long as it stays there.
       zone: { damage: 2, tick: 0.5, life: 10, max: 5 },
     },
+    snake: {
+      name: 'SNAKE BALL',
+      short: 'SNAKE',
+      hp: 100,
+      damage: 6,
+      mass: 1,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#9fe07a', base: '#3e8f3a', dark: '#245c26', rim: '#0f2a10' },
+      scales: true,
+      // Wall bounces grow its body: the 1st segment takes 1 bounce, the 2nd 2 more, then 3, 4,
+      // and 5 for the tail. Segments trail behind the head as solid barriers that hurt enemies
+      // who touch them. They can't be hurt; only the head takes damage.
+      snake: { bouncesFor: [1, 2, 3, 4, 5], segDamage: 4, hitCooldown: 0.4, spacing: 17, segRadius: [10, 9, 9, 8, 7] },
+    },
   };
+  // Body segments reuse the snake's colors and scales; this type is only used to draw them.
+  const SNAKE_BODY = { colors: BALL_TYPES.snake.colors, scales: true, radius: 10, body: true };
   const BALL_ORDER = Object.keys(BALL_TYPES);
 
   // ---------------------------------------------------------------------------
@@ -784,6 +801,20 @@
       // sparks flying off both tips
       for (const [sx, sy] of [[7.6, -11.6], [8.6, -12.8], [-6.6, 11.4], [-7.6, 12.4], [-2.6, 12.6]]) dot(sx, sy, 1, 1, '#ffffff');
       for (const [sx, sy] of [[7.2, -10.2], [-7.4, 10.2]]) dot(sx, sy, 1, 1, '#3d7bff');
+    }
+    if (type.scales) {
+      // diamond scale pattern: dark diamonds with a lighter edge, fading toward the rim,
+      // and a pale belly band along the bottom
+      paint((x, y, h) => {
+        const u = (x + y) / 4.2, v = (x - y) / 4.2;
+        const fu = u - Math.floor(u), fv = v - Math.floor(v);
+        const edge = Math.min(fu, 1 - fu, fv, 1 - fv);   // distance to the diamond's border
+        if (inPlate(x, y, 0.5) && !type.body) return;   // keep the HP number readable
+        if (Math.hypot(x, y) > BR - 1.4) return;
+        if (edge < 0.07) return ['#173d18', 0.6];         // dark seams between scales
+        if (edge < 0.14 && fu + fv < 1) return ['#c4f29a', 0.4];   // lit upper edge of each scale
+      });
+      paint((x, y) => y > BR * 0.55 && Math.hypot(x, y) < BR - 1 ? ['#e4d48a', 0.55] : null);
     }
     if (type.zoneMark) {
       // four white corner brackets framing the HP number, like a target lock
@@ -1136,6 +1167,7 @@
       inflate: 0,
       gunAng: side === 0 ? 0 : Math.PI, reload: t.gun ? 0.5 : 0, muzzle: 0,
       zoneStrand: null, zoneTick: 0, inZone: false,
+      segs: [], path: [], snakeBounces: 0, segCd: 0,
       // slime / healer
       gen: 0,
       healT: t.healer ? t.healer.everyMin : 0,
@@ -1672,6 +1704,7 @@
     if (hit && ball.type.spikes) growSpike(ball, hit);
     if (hit && ball.type.chains) chainWallHit(ball, hit);
     if (hit && ball.type.zone) zoneWallHit(ball, hit);
+    if (hit && ball.type.snake) snakeWallHit(ball);
     if (hit && ball.bleed > 0 && ball.bleedCd <= 0 && ball.bleedSrc) {
       ball.bleedCd = 0.2;
       hurt(ball, ball.bleedSrc.type.glass.bleedDamage, ball.bleedSrc, '#c0203a');
@@ -1918,6 +1951,128 @@
       }
     }
     chains = chains.filter(c => !c.done && c.owner.alive);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Snake Ball: wall bounces grow body segments that trail behind the head
+  // ---------------------------------------------------------------------------
+  function snakeWallHit(b) {
+    const cfg = b.type.snake;
+    if (b.segs.length >= cfg.bouncesFor.length) return;
+    b.snakeBounces++;
+    if (b.snakeBounces < cfg.bouncesFor[b.segs.length]) return;
+    b.snakeBounces = 0;
+    const n = b.segs.length;
+    b.segs.push({ x: b.x, y: b.y, r: cfg.segRadius[n], tail: n === cfg.bouncesFor.length - 1, born: 0 });
+    // the tail is always the smallest, last piece
+    popups.push({ x: b.x, y: b.y - b.r - 12, text: n === cfg.bouncesFor.length - 1 ? 'TAIL!' : 'GROW!', t: -0.1, color: '#9fe07a' });
+    burst(b.x, b.y, { light: '#ffffff', base: '#9fe07a', dark: '#3e8f3a' }, 8);
+  }
+
+  // Record where the head has been, and lay the segments out along that trail.
+  function updateSnake(b, dt) {
+    const cfg = b.type.snake;
+    if (!cfg) return;
+    if (!b.alive) { b.segs = []; return; }
+    const last = b.path[0];
+    if (!last || Math.hypot(b.x - last.x, b.y - last.y) > 0.5) b.path.unshift({ x: b.x, y: b.y });
+    const need = (b.segs.length + 1) * cfg.spacing + 20;
+    // trim the trail to what the body needs
+    let total = 0;
+    for (let i = 1; i < b.path.length; i++) {
+      total += Math.hypot(b.path[i].x - b.path[i - 1].x, b.path[i].y - b.path[i - 1].y);
+      if (total > need) { b.path.length = i + 1; break; }
+    }
+    b.segs.forEach((sg, k) => {
+      sg.born += dt;
+      const want = (k + 1) * cfg.spacing;
+      let d = 0, px = b.x, py = b.y, placed = false;
+      for (let i = 0; i < b.path.length; i++) {
+        const q = b.path[i], step = Math.hypot(q.x - px, q.y - py);
+        if (d + step >= want && step > 0) {
+          const f = (want - d) / step;
+          sg.x = px + (q.x - px) * f; sg.y = py + (q.y - py) * f;
+          placed = true;
+          break;
+        }
+        d += step; px = q.x; py = q.y;
+      }
+      if (!placed && b.path.length) { const q = b.path[b.path.length - 1]; sg.x = q.x; sg.y = q.y; }
+    });
+    b.segCd = Math.max(0, b.segCd - dt);
+  }
+
+  // Enemies bounce off the body like a wall and take damage; the body itself can't be hurt.
+  function snakeSegCollisions() {
+    for (const sn of balls) {
+      if (!sn.type.snake || !sn.alive || !sn.segs.length) continue;
+      const cfg = sn.type.snake;
+      for (const o of balls) {
+        if (!o.alive || o.side === sn.side || o.phased || o.latch) continue;
+        for (const sg of sn.segs) {
+          if (sg.born < 0.3) continue;   // a fresh segment doesn't bite right away
+          const dx = o.x - sg.x, dy = o.y - sg.y, d = Math.hypot(dx, dy) || 1;
+          if (d >= o.r + sg.r) continue;
+          const nx = dx / d, ny = dy / d;
+          if (o.stuck <= 0) {
+            o.x += nx * (o.r + sg.r - d); o.y += ny * (o.r + sg.r - d);
+            const vn = o.vx * nx + o.vy * ny;
+            if (vn < 0) { o.vx -= 2 * vn * nx; o.vy -= 2 * vn * ny; }
+          }
+          if (!o.segCdBy || o.segCdBy <= 0) {
+            o.segCdBy = cfg.hitCooldown;
+            hurt(o, cfg.segDamage, sn, '#9fe07a');
+            o.squash = 0.12;
+            burst(sg.x + nx * sg.r, sg.y + ny * sg.r, { light: '#ffffff', base: '#9fe07a', dark: '#3e8f3a' }, 5);
+          }
+        }
+      }
+    }
+    for (const o of balls) if (o.segCdBy > 0) o.segCdBy -= STEP;
+  }
+
+  // The body: scaled segments behind the head, smallest at the tail, which ends in a point.
+  function drawSnakeBody(b) {
+    if (!b.type.snake || !b.alive) return;
+    for (let k = b.segs.length - 1; k >= 0; k--) {
+      const sg = b.segs[k];
+      const grow = Math.min(1, sg.born / 0.25);
+      const r = Math.max(3, sg.r * grow);
+      if (sg.tail) {
+        // a pointed tail tip sticking out behind the last segment
+        const prev = k > 0 ? b.segs[k - 1] : b;
+        const ax = sg.x - prev.x, ay = sg.y - prev.y, al = Math.hypot(ax, ay) || 1;
+        const tx = sg.x + ax / al * (r + 6), ty = sg.y + ay / al * (r + 6);
+        ctx.fillStyle = '#0f2a10';
+        for (let w = -2; w <= 2; w++) pixLine(sg.x - ay / al * w, sg.y + ax / al * w, tx, ty);
+        ctx.fillStyle = '#3e8f3a';
+        for (let w = -1; w <= 1; w++) pixLine(sg.x - ay / al * w, sg.y + ax / al * w, tx - ax / al, ty - ay / al);
+      }
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      fpx(sg.x - r + 1, sg.y + r - 1, (r * 2 - 2) * RES, 2);
+      drawSprite(spriteFor(SNAKE_BODY, r), sg.x, sg.y);
+    }
+  }
+
+  // Head details: yellow slit eyes looking where it's going, and a flicking forked tongue.
+  function drawSnakeFace(b) {
+    if (!b.type.snake || !b.alive) return;
+    const sp = Math.hypot(b.vx, b.vy);
+    const ang = sp > 1 ? Math.atan2(b.vy, b.vx) : (b.side === 0 ? 0 : Math.PI);
+    const c = Math.cos(ang), s2 = Math.sin(ang);
+    for (const off of [-0.55, 0.55]) {
+      const ex = b.x + Math.cos(ang + off) * (b.r - 4.5), ey = b.y + Math.sin(ang + off) * (b.r - 4.5);
+      ctx.fillStyle = '#0f2a10'; fpx(ex - 1.5, ey - 1.5, 6, 6);
+      ctx.fillStyle = '#ffe14d'; fpx(ex - 1, ey - 1, 4, 4);
+      ctx.fillStyle = '#0f2a10'; fpx(ex - 0.25, ey - 1, 1, 4);   // slit pupil (sizes are hi-px)
+    }
+    if (Math.floor(performance.now() / 260) % 3 === 0) {
+      const tx = b.x + c * (b.r + 5), ty = b.y + s2 * (b.r + 5);
+      ctx.fillStyle = '#e8283c';
+      pixLine(b.x + c * (b.r - 1), b.y + s2 * (b.r - 1), tx, ty);
+      pixLine(tx, ty, tx + Math.cos(ang - 0.6) * 2.5, ty + Math.sin(ang - 0.6) * 2.5);
+      pixLine(tx, ty, tx + Math.cos(ang + 0.6) * 2.5, ty + Math.sin(ang + 0.6) * 2.5);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -2562,6 +2717,7 @@
         updateMagnet(b, dt);
         updateBalloon(b, dt);
         updateGun(b, dt);
+        updateSnake(b, dt);
         b.chill = Math.max(0, b.chill - dt);
       }
       for (const sp of spikes) sp.t += dt;
@@ -2571,6 +2727,7 @@
       updateShards(dt);
       updateBullets(dt);
       updateZones(dt);
+      snakeSegCollisions();
       for (let i = 0; i < balls.length; i++)
         for (let j = i + 1; j < balls.length; j++) {
           const a = balls[i], b = balls[j];
@@ -3311,6 +3468,7 @@
     const now = performance.now();
     if (b.type.studs) drawStudRivets(b.x, b.y, b.r, now / 600);
     if (b.type.fangs) drawVampFace(b.x, b.y, b.r, b.face, !!b.latch);
+    drawSnakeFace(b);
     drawCracks(b);
     if (b.type.rng && b.rngSpin > 0) {
       // slot machine: the chip's inserts light up one after another while it rolls
@@ -3473,6 +3631,10 @@
       info.push(['SLIMES ' + n, '#c6f9a8']);
       info.push([ball.gen < t.slime.splitBelow.length ? 'SPLIT <' + t.slime.splitBelow[ball.gen] : 'SPLIT DONE', '#c6f9a8']);
     }
+    if (t.snake) {
+      const n = ball.segs.length, need = t.snake.bouncesFor[n];
+      info.push([n >= t.snake.bouncesFor.length ? 'BODY 5/5 FULL' : 'BODY ' + n + '/5 GROW ' + ball.snakeBounces + '/' + need, '#9fe07a']);
+    }
     if (t.zone) info.push(['ZONES ' + zones.filter(z => z.owner === ball).length + '/' + t.zone.max + (ball.zoneStrand ? ' DRAWING' : ''), '#ff7a7a']);
     if (ball.inZone && ball.alive) info.push(['IN A ZONE!', '#ff4f4f']);
     if (t.gun) info.push(ball.reload > 0 ? ['RELOADING ' + ball.reload.toFixed(1) + 'S', '#e8c48a'] : ['LOADED', '#ffe14d']);
@@ -3569,6 +3731,7 @@
 
   // One short line describing a ball's special, for its card.
   function abilityText(t) {
+    if (t.snake) return ['BODY ' + t.snake.segDamage, '#9fe07a'];
     if (t.zone) return ['IN ZONE ' + t.zone.damage, '#ff7a7a'];
     if (t.gun) return ['GUN ' + t.gun.damage, '#ffe14d'];
     if (t.wcd) return ['BOX 1-75', '#9fc4ff'];
@@ -3745,6 +3908,7 @@
       drawShards();
       drawBullets();
       for (const b of balls) { drawMagnetField(b); drawString(b); }
+      for (const b of balls) drawSnakeBody(b);
       for (const b of balls) drawWeapon(b);
       for (const b of balls) drawBallWithFlash(b);
       for (const b of balls) drawWrap(b);

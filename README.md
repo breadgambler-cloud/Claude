@@ -37,6 +37,7 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | Gunslinger Ball | 100 | 4, bullets 7 |
 | WCD Ball | 120 | the box number (1–75), or 5 |
 | Zone Ball | 100 | 6, zones 2 every 0.5 s |
+| Snake Ball | 100 | 6, body segments 4 |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
 When two axes meet they clang off each other and both reverse direction.
@@ -112,3 +113,7 @@ off, a new grid is dealt.
 The Zone Ball draws lines like the Spider Ball: it touches a wall, then a different wall, and the line between those spots
 cuts the arena in two. The smaller side becomes a red zone for 10 seconds (up to 5 zones at once). An enemy inside a
 zone takes 2 damage every half second for as long as it stays there, and overlapping zones stack.
+
+The Snake Ball grows its body from wall bounces: the 1st segment takes 1 bounce, the 2nd 2 more, then 3, then 4, and
+the 5th (the tail) 5 more. The segments trail behind the head like a snake. They're solid barriers: enemies bounce off
+them and take 4 damage. Segments can't be hurt; only the head takes damage.
