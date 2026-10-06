@@ -2054,18 +2054,12 @@
     }
   }
 
-  // Head details: yellow slit eyes looking where it's going, and a flicking forked tongue.
+  // Head detail: a flicking forked tongue pointing where it's going.
   function drawSnakeFace(b) {
     if (!b.type.snake || !b.alive) return;
     const sp = Math.hypot(b.vx, b.vy);
     const ang = sp > 1 ? Math.atan2(b.vy, b.vx) : (b.side === 0 ? 0 : Math.PI);
     const c = Math.cos(ang), s2 = Math.sin(ang);
-    for (const off of [-0.55, 0.55]) {
-      const ex = b.x + Math.cos(ang + off) * (b.r - 4.5), ey = b.y + Math.sin(ang + off) * (b.r - 4.5);
-      ctx.fillStyle = '#0f2a10'; fpx(ex - 1.5, ey - 1.5, 6, 6);
-      ctx.fillStyle = '#ffe14d'; fpx(ex - 1, ey - 1, 4, 4);
-      ctx.fillStyle = '#0f2a10'; fpx(ex - 0.25, ey - 1, 1, 4);   // slit pupil (sizes are hi-px)
-    }
     if (Math.floor(performance.now() / 260) % 3 === 0) {
       const tx = b.x + c * (b.r + 5), ty = b.y + s2 * (b.r + 5);
       ctx.fillStyle = '#e8283c';
