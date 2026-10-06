@@ -478,6 +478,20 @@
         cooldown: 2,       // seconds before the hook can catch again
       },
     },
+    virus: {
+      name: 'VIRUS BALL',
+      short: 'VIRUS',
+      hp: 100,
+      damage: 5,
+      mass: 1,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#c8f58a', base: '#5cc23a', dark: '#2f8a22', rim: '#0f3a0c' },
+      nubs: true,    // stubby green spikes all around, some facing out of the screen
+      // Touching an enemy poisons it: it is slowed and takes 1 damage per tick for 15 ticks.
+      // Touching the Virus Ball again while poisoned resets the 15 ticks.
+      virus: { ticks: 15, tick: 0.4, damage: 1, slow: 0.3 },
+    },
   };
   // Body segments reuse the snake's colors and scales; this type is only used to draw them.
   const SNAKE_BODY = { colors: BALL_TYPES.snake.colors, scales: true, radius: 10, body: true };
@@ -766,6 +780,14 @@
       // the reference ball: a thin seam around its middle, bowed like a sphere's equator
       const fy = x => 5 + 1 * Math.sqrt(Math.max(0, 1 - (x / BR) ** 2));
       paint((x, y) => curve(fy)(x, y) ? col.dark : null);
+    }
+    if (type.nubs) {
+      // nubs pointing out of the screen: a dark socket with a lit round cap, clear of the HP number
+      for (const [nx, ny, rr] of [[-6.5, -6, 1.9], [6.5, -5.5, 1.7], [-7.5, 5, 1.7], [6, 6.5, 1.9], [0.5, -9.5, 1.4]]) {
+        shape(oval(nx, ny, rr + 0.6, rr + 0.6), { o: col.rim }, col.dark);
+        shape(oval(nx - 0.3, ny - 0.3, rr, rr), { l: col.light, d: col.dark }, col.base);
+        dot(nx - rr * 0.4, ny - rr * 0.4, 1, 1, '#ffffff');
+      }
     }
     if (type.rope) {
       // a twisted rope band around the middle: tan and brown strands, dark edges
@@ -1192,6 +1214,7 @@
       phased: false, phaseT: t.ghost ? t.ghost.solid : 0,
       zapT: t.zap ? t.zap.every : 0,
       chill: 0,
+      poison: 0, poisonT: 0, poisonSrc: null,
       // shocker / stun
       shockT: t.shocker ? t.shocker.every : 0, charged: 0, stunned: false,
       // chained
@@ -1537,7 +1560,8 @@
       victim.chill = attacker.type.freeze.time;
       burst(victim.x, victim.y, { light: '#ffffff', base: '#9fe3f5', dark: '#5fb3d6' }, 8);
     }
-    else if (attacker.type.rng) {
+    if (attacker.type.virus && victim.alive && attacker.side !== victim.side) poisonBall(victim, attacker);
+    if (attacker.type.rng && !(amount > 0)) {
       // still rolling: the bump does nothing (one label at a time per ball)
       if (!popups.some(p => p.noDmg === victim && p.t < 0.6)) {
         popups.push({ x: victim.x, y: victim.y - victim.r - 4, text: 'NO DMG', t: 0, color: '#9fb6dc', noDmg: victim });
@@ -2779,10 +2803,35 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Virus Ball: poison on contact
+  // ---------------------------------------------------------------------------
+  function poisonBall(v, src) {
+    const cfg = src.type.virus;
+    if (v.poison <= 0) {
+      popups.push({ x: v.x, y: v.y - v.r - 12, text: 'POISONED', t: -0.1, color: '#9fe07a' });
+      v.poisonT = cfg.tick;
+    }
+    v.poison = cfg.ticks;   // a fresh touch resets the count
+    v.poisonSrc = src;
+    burst(v.x, v.y, { light: '#e8ffc8', base: '#7fe04a', dark: '#2f8a22' }, 8);
+  }
+
+  function updatePoison(b, dt) {
+    if (b.poison <= 0 || !b.alive) return;
+    b.poisonT -= dt;
+    if (b.poisonT > 0) return;
+    const cfg = b.poisonSrc.type.virus;
+    b.poisonT += cfg.tick;
+    b.poison--;
+    hurt(b, cfg.damage, b.poisonSrc, '#7fe04a');
+  }
+
+  // ---------------------------------------------------------------------------
   // Update
   // ---------------------------------------------------------------------------
   const STEP = 1 / 120;
   const BALL_CHILL_SLOW = BALL_TYPES.ice.freeze.slow;
+  const BALL_POISON_SLOW = BALL_TYPES.virus.virus.slow;
 
   function update(dt) {
     roundTimer += dt;
@@ -2790,7 +2839,8 @@
       for (const b of balls) {
         if (!b.alive || b.stuck > 0 || b.latch || b.hookedBy) continue;
         settleSpeed(b, dt);
-        const slow = b.chill > 0 ? 1 - BALL_CHILL_SLOW : 1;   // chilled balls crawl
+        let slow = b.chill > 0 ? 1 - BALL_CHILL_SLOW : 1;   // chilled balls crawl
+        if (b.poison > 0) slow *= 1 - BALL_POISON_SLOW;     // and poisoned ones drag
         b.x += b.vx * dt * slow;
         b.y += b.vy * dt * slow;
         bounceWalls(b);
@@ -2810,6 +2860,7 @@
         updateSnake(b, dt);
         updateHook(b, dt);
         b.slamCd = Math.max(0, b.slamCd - dt);
+        updatePoison(b, dt);
         b.chill = Math.max(0, b.chill - dt);
       }
       for (const sp of spikes) sp.t += dt;
@@ -3001,6 +3052,21 @@
       return lit ? '#e4e8ee' : '#7b828c';
     }, '#1b1f25');
   }
+  // The Virus Ball's nubs: ten stubby rounded stalks around its rim, lit from the top-left.
+  function drawNubs(x, y, r, spin) {
+    const step = Math.PI * 2 / 10;
+    fineShape(x, y, r + 5, spin, (u, v) => {
+      const k = Math.round(Math.atan2(v, u) / step), a = k * step;
+      const p = u * Math.cos(a) + v * Math.sin(a), q = -u * Math.sin(a) + v * Math.cos(a);
+      if (p < r - 1 || Math.abs(q) > 1.5) return;
+      const cap = r + 3.3;
+      if (p > cap + Math.sqrt(Math.max(0, 1.5 * 1.5 - q * q)) * 0.6) return;   // a rounded end
+      if (p > cap - 0.6) return '#c8f58a';
+      const A = spin + a, lit = q * (-Math.sin(A) * -0.6 + Math.cos(A) * -0.7) > 0;
+      return lit ? '#7fd84e' : '#3f9a2a';
+    }, '#0f3a0c');
+  }
+
   // A dark rivet where each stud meets the ball (drawn over the ball).
   function drawStudRivets(x, y, r, spin) {
     ctx.fillStyle = '#2a0d07';
@@ -3372,6 +3438,27 @@
     }
   }
 
+  // Sickly green tint and rising bubbles on a poisoned ball.
+  function drawPoison(b) {
+    if (!b.alive || b.poison <= 0) return;
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = '#7fe04a';
+    for (let dy = -b.r; dy <= b.r; dy++) {
+      const w = Math.floor(Math.sqrt(b.r * b.r - dy * dy));
+      ctx.fillRect(Math.round(b.x - w), Math.round(b.y + dy), w * 2 + 1, 1);
+    }
+    ctx.globalAlpha = 1;
+    const now = performance.now() / 1000;
+    for (let i = 0; i < 4; i++) {
+      const t = (now * 0.8 + i / 4) % 1;
+      const bx = b.x + Math.sin(i * 2.4 + now * 3) * (b.r * 0.6), by = b.y - b.r * 0.2 - t * (b.r + 6);
+      ctx.globalAlpha = 1 - t;
+      ctx.fillStyle = '#0f3a0c'; fpx(bx - 1, by - 1, 4, 4);
+      ctx.fillStyle = '#b8f07a'; fpx(bx - 0.5, by - 0.5, 2, 2);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // Frost tint on a chilled ball.
   function drawChill(b) {
     if (!b.alive || b.chill <= 0) return;
@@ -3544,6 +3631,7 @@
       }
     }
     if (b.type.studs && b.alive) drawStuds(b.x, b.y, b.r, performance.now() / 600);
+    if (b.type.nubs && b.alive) drawNubs(b.x, b.y, b.r, performance.now() / 900);
     if (b.type.fangs && b.alive) drawCape(b.x, b.y, b.r, b.face);
     if (b.type.legs && b.alive) {
       const moving = b.stuck > 0 ? 0 : Math.hypot(b.vx, b.vy);
@@ -3719,6 +3807,7 @@
     if (t.hook) drawHookArt(icx, icy, alignRight ? Math.PI + 0.6 : -0.6, t.radius + 7, 0.8);
     if (t.legs) drawLegs(icx, icy, t.radius, now / 250);
     if (t.studs) drawStuds(icx, icy, t.radius, now / 600);
+    if (t.nubs) drawNubs(icx, icy, t.radius, now / 900);
     const iconFace = alignRight ? Math.PI : 0;
     if (t.fangs) drawCape(icx, icy, t.radius, iconFace);
     if (t.cap) drawFuse(icx, icy, t.radius, 9);
@@ -3804,6 +3893,7 @@
       if (ball.chainT > 0) info.push(['LOCKED ' + ball.chainT.toFixed(1) + 'S', '#ffe14d']);
     }
     if (t.shocker) info.push(ball.charged > 0 ? ['CHARGED ' + ball.charged.toFixed(1) + 'S', '#ffffff'] : ['CHARGE IN ' + Math.max(0, ball.shockT).toFixed(1) + 'S', '#7fd8ff']);
+    if (ball.poison > 0 && ball.alive) info.push(['POISONED ' + ball.poison + '/' + ball.poisonSrc.type.virus.ticks, '#9fe07a']);
     if (ball.chill > 0) info.push(['SLOWED ' + ball.chill.toFixed(1) + 'S', '#9fe3f5']);
     for (const [txt, col] of info) {
       for (const part of wrapPanel(txt)) {
@@ -3882,6 +3972,7 @@
 
   // One short line describing a ball's special, for its card.
   function abilityText(t) {
+    if (t.virus) return ['POISON ' + t.virus.ticks, '#9fe07a'];
     if (t.hook) return ['SLAM ' + t.hook.slamDamage, '#d9b27a'];
     if (t.snake) return ['BODY ' + t.snake.segDamage, '#9fe07a'];
     if (t.zone) return ['IN ZONE ' + t.zone.damage, '#ff7a7a'];
@@ -3988,6 +4079,7 @@
       if (t.hook) drawHookArt(cx, cy, -Math.PI * 0.75 - (hot ? performance.now() / 300 : 0), rr + 6, 0.6);
       if (t.legs) drawLegs(cx, cy, rr, hot ? performance.now() / 120 : 0);
       if (t.studs) drawStuds(cx, cy, rr, hot ? performance.now() / 300 : 0);
+      if (t.nubs) drawNubs(cx, cy, rr, hot ? performance.now() / 450 : 0);
       if (t.fangs) drawCape(cx, cy, rr, 0);
       if (t.cap) drawFuse(cx, cy, rr, hot ? 0.5 : 9);
       if (t.gun) drawGun(cx, cy, rr, -0.5, hot && Math.floor(performance.now() / 150) % 3 === 0 ? 1 : 0);
@@ -4069,6 +4161,7 @@
       for (const b of balls) drawCharge(b);
       for (const b of balls) drawShield(b);
       for (const b of balls) drawChill(b);
+      for (const b of balls) drawPoison(b);
       drawEffects();
       drawExecuteFx();
     }

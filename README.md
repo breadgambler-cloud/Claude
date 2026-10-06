@@ -39,6 +39,7 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | Zone Ball | 100 | 6, zones 2 every 0.5 s |
 | Snake Ball | 100 | 6, body segments 4 |
 | Hook Ball | 100 | 5, hook 3, wall slams 7 |
+| Virus Ball | 100 | 5, poison 1 per tick |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
 When two axes meet they clang off each other and both reverse direction.
@@ -122,3 +123,6 @@ them and take 4 damage. Segments can't be hurt; only the head takes damage.
 The Hook Ball has a hook that circles it like the Axe Ball's axe. When the hook catches the enemy (3 damage), it swings
 it around fast for 2.2 seconds and then flings it away. Every wall the enemy slams into while it's on the hook costs it
 7 HP; once it's thrown off, the walls don't hurt it. The hook needs 2 seconds to reset before it can catch again.
+
+The Virus Ball poisons every enemy it touches. Poison slows the ball by 30% and lasts 15 ticks (one every 0.4 seconds),
+dealing 1 damage per tick. Touching the Virus Ball again while poisoned resets the count to 15.
