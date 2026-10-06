@@ -42,7 +42,7 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | Virus Ball | 90 | 5, poison 1 per tick |
 | Beam Ball | 100 | 5, beam 9 |
 | Shackled Ball | 100 | 6, cage walls 5 |
-| Rubber Ball | 60 | 3-18, by speed |
+| Rubber Ball | 150 | 3-18, by speed |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
 When two axes meet they clang off each other and both reverse direction.

@@ -227,8 +227,9 @@
       mass: 1,
       radius: 12,
       speed: 130,
-      colors: { light: '#6a7590', base: '#2b2f3a', dark: '#181b22', rim: '#07080b', glow: '#5a6a90', glowW: 2 },
+      colors: { light: '#a46ad8', base: '#5e2a90', dark: '#3c1866', rim: '#14051f', glow: '#b48ae8', glowW: 2 },
       cap: true,     // metal fuse cap on top
+      angry: true,   // glaring white eyes
       // Its fuse burns down and it blows up, hurting anything in the blast.
       bomb: {
         every: 4, radius: 44, damage: 15, knock: 200,
@@ -258,8 +259,8 @@
       mass: 1,
       radius: 12,
       speed: 130,
-      colors: { light: '#fff27a', base: '#f5c518', dark: '#c08a0a', rim: '#4a3000' },
-      bolt: true,    // lightning bolt mark
+      colors: { light: '#4fa2f0', base: '#1b6ad0', dark: '#10449a', rim: '#061a44', glow: '#8fd8ff' },
+      bolt: true,    // glowing lightning bolt mark
       // Every few seconds it strikes the enemy with lightning, wherever they are.
       zap: { every: 3, damage: 6 },
     },
@@ -524,7 +525,7 @@
     rubber: {
       name: 'RUBBER BALL',
       short: 'RUBBER',
-      hp: 60,
+      hp: 150,
       damage: 5,
       mass: 0.8,
       radius: 8,     // small
@@ -900,6 +901,18 @@
       dot(-1.5, -11, 2, 1, '#ffffff');
       spec = [-0.42 * BR, -0.42 * BR, true];
     }
+    if (type.angry) {
+      // two glaring eyes under the HP number: white half-moons whose flat tops slope down toward
+      // the middle, like a scowl
+      for (const sgn of [-1, 1]) {
+        const ex = 6.4 * sgn, ey = 6;
+        const eye = (x, y) => {
+          const lx = (x - ex) * sgn, ly = y - ey;   // lx grows outward
+          return (lx / 4.5) ** 2 + (ly / 2.9) ** 2 <= 1 && ly >= -1.9 - 0.62 * lx;
+        };
+        shape(eye, { o: col.rim, d: '#c8c0e0' }, '#fbf8ff');
+      }
+    }
     if (type.face) {
       // a ghost: lavender halo around the scalloped hem, tall eyes, a little "o" mouth
       paint((x, y) => {
@@ -914,33 +927,37 @@
       spec = null;
     }
     if (type.bolt) {
-      // a jagged lightning bolt from rim to rim. Its two zigs sit just above and below the HP
-      // number, so the bolt still reads while the number covers the middle. White-hot core,
-      // pale yellow edges, a thick navy outline and an electric-blue glow, with sparks off the tips.
-      const zig = [[5.6, -13], [-1.4, -5.4], [4.6, -5.2], [-3.6, 5.2], [2.4, 5.4], [-4.8, 13]];
+      // a slashing lightning bolt, glowing cyan-white like the reference: a long upper stroke from
+      // the top-right, a kink just above the HP number, and a sharp tail to the lower-left
+      const zig = [[9.5, -9.5], [-0.5, -4.6], [3.6, -4.4], [-7, 9.6]];
+      const widths = [3.6, 3, 2.8];
       const inBolt = (x, y) => {
-        // thicker at the top, tapering toward the bottom tip
         for (let k = 0; k < zig.length - 1; k++) {
-          const w = 3.4 - k * 0.45;
-          if (segDist(x, y, ...zig[k], ...zig[k + 1]) <= w / 2) return true;
+          const [x1, y1] = zig[k], [x2, y2] = zig[k + 1];
+          const dx = x2 - x1, dy = y2 - y1, L2 = dx * dx + dy * dy;
+          const t = Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / L2));
+          // the strokes taper to points at both ends of the bolt
+          let w = widths[k];
+          if (k === 0) w *= 0.25 + 0.75 * t;
+          if (k === zig.length - 2) w *= 1 - 0.85 * t;
+          if (Math.hypot(x - x1 - dx * t, y - y1 - dy * t) <= w / 2) return true;
         }
         return false;
       };
       const near = (x, y, n) => inBolt(x + n, y) || inBolt(x - n, y) || inBolt(x, y + n) || inBolt(x, y - n)
         || inBolt(x + n * 0.7, y + n * 0.7) || inBolt(x - n * 0.7, y - n * 0.7) || inBolt(x + n * 0.7, y - n * 0.7) || inBolt(x - n * 0.7, y + n * 0.7);
+      // a soft blue-white glow bleeding into the ball around the bolt
       paint((x, y) => {
         if (inBolt(x, y)) return;
-        if (near(x, y, E)) return '#0a1033';                 // thick dark outline (with the 1 hi-px one below: 2 hi-px)
-        if (near(x, y, 2.5 * E)) return ['#3d7bff', 0.6];    // electric glow
-        if (near(x, y, 4 * E)) return ['#3d7bff', 0.25];
+        if (near(x, y, 1.5 * E)) return ['#bff4ff', 0.85];
+        if (near(x, y, 3 * E)) return ['#5fe0ff', 0.6];
+        if (near(x, y, 5 * E)) return ['#3fc0ff', 0.35];
+        if (near(x, y, 7 * E)) return ['#3fa8ff', 0.15];
       });
-      shape(inBolt, { o: '#0a1033', l: '#ffffff', d: '#ffc21f' }, (x, y) => {
-        const deep = inBolt(x + 2.5 * E, y) && inBolt(x - 2.5 * E, y) && inBolt(x, y + 2.5 * E) && inBolt(x, y - 2.5 * E);
-        return deep ? '#ffffff' : '#fff3a0';
+      shape(inBolt, { l: '#ffffff' }, (x, y) => {
+        const deep = inBolt(x + 1.5 * E, y) && inBolt(x - 1.5 * E, y) && inBolt(x, y + 1.5 * E) && inBolt(x, y - 1.5 * E);
+        return deep ? '#ffffff' : '#c8f8ff';
       });
-      // sparks flying off both tips
-      for (const [sx, sy] of [[7.6, -11.6], [8.6, -12.8], [-6.6, 11.4], [-7.6, 12.4], [-2.6, 12.6]]) dot(sx, sy, 1, 1, '#ffffff');
-      for (const [sx, sy] of [[7.2, -10.2], [-7.4, 10.2]]) dot(sx, sy, 1, 1, '#3d7bff');
     }
     if (type.scales) {
       // diamond scale pattern: dark diamonds with a lighter edge, fading toward the rim,
@@ -2749,8 +2766,8 @@
     }
     pts.push({ x: foe.x, y: foe.y });
     effects.push({ kind: 'bolt', pts, t: 0, life: 0.25 });
-    hurt(foe, cfg.damage, b, '#ffe14d');
-    burst(foe.x, foe.y, { light: '#ffffff', base: '#ffe14d', dark: '#6f8ff5' }, 10);
+    hurt(foe, cfg.damage, b, '#7fd8ff');
+    burst(foe.x, foe.y, { light: '#ffffff', base: '#9ff0ff', dark: '#2a86e8' }, 10);
     shake = Math.max(shake, 0.1);
   }
 
@@ -3473,13 +3490,13 @@
         ring(fx.x, fx.y, R * 0.8 - 1, '#ffffff');
       } else if (fx.kind === 'bolt') {
         ctx.globalAlpha = 1 - k;
-        for (const [off, col] of [[1, '#6f8ff5'], [-1, '#6f8ff5'], [0, '#ffffff']]) {
+        for (const [off, col] of [[1, '#2a86e8'], [-1, '#2a86e8'], [0, '#ffffff']]) {
           ctx.fillStyle = col;
           for (let i = 0; i < fx.pts.length - 1; i++) {
             pixLine(fx.pts[i].x + off, fx.pts[i].y, fx.pts[i + 1].x + off, fx.pts[i + 1].y);
           }
         }
-        ctx.fillStyle = '#ffe14d';
+        ctx.fillStyle = '#9ff0ff';
         for (let i = 0; i < fx.pts.length - 1; i++) pixLine(fx.pts[i].x, fx.pts[i].y + 1, fx.pts[i + 1].x, fx.pts[i + 1].y + 1);
       }
     }
@@ -3677,11 +3694,13 @@
       }
       for (let dy = -r; dy <= r; dy++) {
         const w = Math.floor(Math.sqrt(r * r - dy * dy));
-        ctx.fillStyle = '#2b2f3a';
+        ctx.fillStyle = '#5e2a90';   // purple, like the Bomb Ball
         ctx.fillRect(Math.round(mb.x - w), Math.round(mb.y + dy), w * 2 + 1, 1);
       }
+      ctx.fillStyle = '#a46ad8'; ctx.fillRect(Math.round(mb.x - 2), Math.round(mb.y - 3), 2, 1);
       ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(mb.x - 2), Math.round(mb.y - 3), 1, 1);
-      ctx.fillStyle = '#5a6070'; ctx.fillRect(Math.round(mb.x - 2), Math.round(mb.y - 3), 2, 1);
+      // tiny scowling eyes
+      ctx.fillStyle = '#fbf8ff'; fpx(mb.x - 2.5, mb.y + 1, 3, 2); fpx(mb.x + 1, mb.y + 1, 3, 2);
       ctx.fillStyle = '#c9a36b'; pixLine(mb.x, mb.y - r, mb.x + 2, mb.y - r - 3);
       if (blink) { ctx.fillStyle = '#fff3b0'; ctx.fillRect(Math.round(mb.x + 2), Math.round(mb.y - r - 4), 2, 2); }
     }
@@ -3999,7 +4018,7 @@
     if (b.type.cap && b.alive) drawFuse(b.x, b.y, b.r, b.fuse);
     if (b.type.zap && b.alive && b.zapT < 0.6) {
       // crackling sparks while the next strike charges
-      ctx.fillStyle = '#ffe14d';
+      ctx.fillStyle = '#9ff0ff';
       for (let i = 0; i < 4; i++) {
         const a = Math.random() * Math.PI * 2;
         ctx.fillRect(Math.round(b.x + Math.cos(a) * (b.r + 2)), Math.round(b.y + Math.sin(a) * (b.r + 2)), 1, 1);
@@ -4236,7 +4255,7 @@
       info.push(['MINI BOMBS ' + miniBombs.filter(mb => mb.owner === ball).length + '/' + t.bomb.mini.max, '#ffb03b']);
     }
     if (t.ghost) info.push([(ball.phased ? 'FADED ' : 'SOLID ') + Math.max(0, ball.phaseT).toFixed(1) + 'S', ball.phased ? '#ffffff' : '#b9b0d6']);
-    if (t.zap) info.push(['ZAP IN ' + Math.max(0, ball.zapT).toFixed(1) + 'S', '#ffe14d']);
+    if (t.zap) info.push(['ZAP IN ' + Math.max(0, ball.zapT).toFixed(1) + 'S', '#7fd8ff']);
     if (t.slime) {
       const n = balls.filter(b => b.side === ball.side && b.alive).length;
       info.push(['SLIMES ' + n, '#c6f9a8']);
@@ -4373,7 +4392,7 @@
     if (t.vampire) return ['DRAIN ' + (t.vampire.drain / t.vampire.tickEvery) + '/S', '#ff4f6d'];
     if (t.bomb) return ['BOOM ' + t.bomb.damage, '#ffb03b'];
     if (t.ghost) return ['FADE ' + t.ghost.faded + 'S', '#e6e0f5'];
-    if (t.zap) return ['ZAP ' + t.zap.damage + '/' + t.zap.every + 'S', '#ffe14d'];
+    if (t.zap) return ['ZAP ' + t.zap.damage + '/' + t.zap.every + 'S', '#7fd8ff'];
     if (t.freeze) return ['SLOW ' + t.freeze.time + 'S', '#9fe3f5'];
     if (t.shocker) return ['STUN ' + t.shocker.stun + 'S', '#7fd8ff'];
     if (t.chains) return ['CHAIN ' + t.chains.hold + 'S', '#c9ced6'];
