@@ -279,6 +279,25 @@
       // while charged, the enemy is shocked and stunned: frozen and unable to deal damage.
       shocker: { every: 3, charge: 1.5, stun: 1.5, damage: 6 },
     },
+    chained: {
+      name: 'CHAINED BALL',
+      short: 'CHAINED',
+      hp: 100,
+      damage: 8,
+      mass: 1,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#b7a58a', base: '#7a6a55', dark: '#4d4234', rim: '#221c14' },
+      links: true,   // iron chain links around its rim
+      // Every wall it hits gives it a chain anchored to that spot. When it hits
+      // an enemy, a held chain locks onto them and reels them toward that wall.
+      chains: {
+        max: 3,        // chains at once (held + locked on)
+        hold: 3,       // seconds a chain holds an enemy
+        reel: 90,      // pixels per second the chain pulls in
+        minLen: 26,    // closest the chain drags them to the wall
+      },
+    },
   };
   const BALL_ORDER = Object.keys(BALL_TYPES);
 
@@ -462,6 +481,18 @@
         }
       }
     }
+    if (type.links) {
+      // a ring of iron chain links around the rim
+      for (let k = 0; k < 10; k++) {
+        const a = k * Math.PI / 5;
+        const cx = Math.round(r + Math.cos(a) * (r - 3)), cy = Math.round(r + Math.sin(a) * (r - 3));
+        const along = k % 2 === 0;
+        g.fillStyle = '#221c14';
+        g.fillRect(cx - (along ? 2 : 1), cy - (along ? 1 : 2), along ? 4 : 3, along ? 3 : 4);
+        g.fillStyle = '#c9ced6';
+        g.fillRect(cx - (along ? 1 : 0), cy - (along ? 0 : 1), along ? 2 : 1, along ? 1 : 2);
+      }
+    }
     if (type.coil) {
       // copper coil bands with a bright terminal on each side
       for (const cy of [r - 7, r + 6]) {
@@ -613,6 +644,7 @@
   let spikes = [];
   let effects = [];   // explosions and lightning bolts
   let miniBombs = [];
+  let chains = [];   // {owner, ax, ay, target, t, len}
   const picks = ['normal', 'normal'];   // ball type for YOU and CPU
   let hoverCard = -1;
 
@@ -702,6 +734,7 @@
     spikes = [];
     effects = [];
     miniBombs = [];
+    chains = [];
     state = 'aim';      // select -> aim -> fight -> over
     winner = null;
     shake = 0;
@@ -892,6 +925,10 @@
     shockCheck(a, b);
     shockCheck(b, a);
 
+    // the Chained Ball locks a held chain onto whatever it hits
+    chainHit(a, b);
+    chainHit(b, a);
+
     // a vampire facing the other ball bites and hangs on instead of bouncing
     if (tryLatch(a, b)) { strike(b, a); return; }
     if (tryLatch(b, a)) { strike(a, b); return; }
@@ -1018,6 +1055,7 @@
     if (ball.y + ball.r > PLAY.bottom) { ball.y = PLAY.bottom - ball.r; ball.vy = -Math.abs(ball.vy); hit = { wall: 'bottom', x: ball.x, y: PLAY.bottom }; }
     if (hit && ball.type.web) spiderTouchWall(ball, hit);
     if (hit && ball.type.spikes) growSpike(ball, hit);
+    if (hit && ball.type.chains) chainWallHit(ball, hit);
     if (hit) {
       ball.squash = 0.08;
       // nudge the angle a little so balls don't get stuck in loops that never meet
@@ -1184,6 +1222,59 @@
       const d = angleDiff(v.face, want);
       v.face += Math.sign(d) * Math.min(Math.abs(d), cfg.turnRate * dt);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Chained Ball: wall hits make chains, hitting the enemy locks one on
+  // ---------------------------------------------------------------------------
+  function chainWallHit(owner, hit) {
+    const cfg = owner.type.chains;
+    const mine = chains.filter(c => c.owner === owner);
+    if (mine.length >= cfg.max) {
+      // full: swap the oldest held chain for this fresh one, if any are free
+      const old = chains.findIndex(c => c.owner === owner && !c.target);
+      if (old < 0) return;
+      chains.splice(old, 1);
+    }
+    chains.push({ owner, ax: hit.x, ay: hit.y, target: null, t: 0, len: 0 });
+    burst(hit.x, hit.y, { light: '#ffffff', base: '#c9ced6', dark: '#6c737d' }, 5);
+  }
+
+  // `owner` hit `foe`: lock its oldest held chain onto them.
+  function chainHit(owner, foe) {
+    const cfg = owner.type.chains;
+    if (!cfg || !owner.alive || !foe.alive || foe.phased || foe.side === owner.side) return;
+    const c = chains.find(c => c.owner === owner && !c.target);
+    if (!c) return;
+    c.target = foe;
+    c.t = cfg.hold;
+    c.len = Math.hypot(foe.x - c.ax, foe.y - c.ay);
+    popups.push({ x: foe.x, y: foe.y - foe.r - 12, text: 'CHAINED!', t: -0.1, color: '#c9ced6' });
+    burst(foe.x, foe.y, { light: '#ffffff', base: '#c9ced6', dark: '#6c737d' }, 10);
+  }
+
+  // Locked chains reel their target toward the wall and won't let them stray past the chain's length.
+  function updateChains(dt) {
+    for (const c of chains) {
+      if (!c.target) continue;
+      const cfg = c.owner.type.chains;
+      const b = c.target;
+      c.t -= dt;
+      if (c.t <= 0 || !b.alive || b.phased || !c.owner.alive) { c.done = true; continue; }
+      c.len = Math.max(cfg.minLen, c.len - cfg.reel * dt);
+      const dx = b.x - c.ax, dy = b.y - c.ay, d = Math.hypot(dx, dy) || 1;
+      if (d > c.len) {
+        const ux = dx / d, uy = dy / d;
+        b.x = Math.max(PLAY.left + b.r, Math.min(PLAY.right - b.r, c.ax + ux * c.len));
+        b.y = Math.max(PLAY.top + b.r, Math.min(PLAY.bottom - b.r, c.ay + uy * c.len));
+        const vr = b.vx * ux + b.vy * uy;
+        if (vr > 0) { b.vx -= ux * vr * 2; b.vy -= uy * vr * 2; }   // yanked back
+      }
+    }
+    for (const c of chains) {
+      if (c.done) burst(c.target.x, c.target.y, { light: '#ffffff', base: '#c9ced6', dark: '#6c737d' }, 6);
+    }
+    chains = chains.filter(c => !c.done && c.owner.alive);
   }
 
   // ---------------------------------------------------------------------------
@@ -1411,6 +1502,7 @@
       }
       for (const sp of spikes) sp.t += dt;
       updateMiniBombs(dt);
+      updateChains(dt);
       for (let i = 0; i < balls.length; i++)
         for (let j = i + 1; j < balls.length; j++) {
           const a = balls[i], b = balls[j];
@@ -1650,6 +1742,46 @@
       }
     }
     ctx.globalAlpha = 1;
+  }
+
+  // Iron chains: from a wall anchor to the Chained Ball (held) or to a caught enemy (locked).
+  function drawChains() {
+    for (const c of chains) {
+      const end = c.target || c.owner;
+      if (!end.alive) continue;
+      const dx = end.x - c.ax, dy = end.y - c.ay, d = Math.hypot(dx, dy) || 1;
+      const ux = dx / d, uy = dy / d;
+      const locked = !!c.target;
+      // links alternate: a flat ring (two rails) then one seen edge-on (a single bar)
+      const steel = locked ? '#e4e8ee' : '#a4abb6', shade = locked ? '#8a929e' : '#5f6670';
+      for (let s2 = 0, k = 0; s2 < d - end.r + 2; s2 += 4, k++) {
+        const x = c.ax + ux * s2, y = c.ay + uy * s2;
+        const x2 = x + ux * 4, y2 = y + uy * 4;
+        if (k % 2 === 0) {
+          ctx.fillStyle = steel;
+          pixLine(x - uy * 1.5, y + ux * 1.5, x2 - uy * 1.5, y2 + ux * 1.5);
+          ctx.fillStyle = shade;
+          pixLine(x + uy * 1.5, y - ux * 1.5, x2 + uy * 1.5, y2 - ux * 1.5);
+        } else {
+          ctx.fillStyle = shade;
+          pixLine(x + uy * 0.6, y - ux * 0.6, x2 + uy * 0.6, y2 - ux * 0.6);
+          ctx.fillStyle = steel;
+          pixLine(x, y, x2, y2);
+        }
+      }
+      // anchor bolt on the wall
+      ctx.fillStyle = '#221c14'; ctx.fillRect(Math.round(c.ax) - 2, Math.round(c.ay) - 2, 5, 5);
+      ctx.fillStyle = locked ? '#ffe14d' : '#c9ced6'; ctx.fillRect(Math.round(c.ax) - 1, Math.round(c.ay) - 1, 3, 3);
+      // shackle around a caught ball
+      if (locked) {
+        ctx.fillStyle = '#c9ced6';
+        for (let i = 0; i < 16; i++) {
+          if (i % 4 === 3) continue;
+          const a = i / 16 * Math.PI * 2;
+          ctx.fillRect(Math.round(end.x + Math.cos(a) * (end.r + 1)), Math.round(end.y + Math.sin(a) * (end.r + 1)), 1, 1);
+        }
+      }
+    }
   }
 
   // Mini bombs: a small bomb with a lit fuse, and a blinking ring showing its huge blast.
@@ -1972,6 +2104,10 @@
     }
     if (t.ghost) info.push([(ball.phased ? 'FADED ' : 'SOLID ') + Math.max(0, ball.phaseT).toFixed(1) + 'S', ball.phased ? '#ffffff' : '#b9b0d6']);
     if (t.zap) info.push(['ZAP IN ' + Math.max(0, ball.zapT).toFixed(1) + 'S', '#ffe14d']);
+    if (t.chains) {
+      const mine = chains.filter(c => c.owner === ball);
+      info.push(['CHAINS ' + mine.length + '/' + t.chains.max + ' (' + mine.filter(c => c.target).length + ' ON)', '#c9ced6']);
+    }
     if (t.shocker) info.push(ball.charged > 0 ? ['CHARGED ' + ball.charged.toFixed(1) + 'S', '#ffffff'] : ['CHARGE IN ' + Math.max(0, ball.shockT).toFixed(1) + 'S', '#7fd8ff']);
     if (ball.chill > 0) info.push(['SLOWED ' + ball.chill.toFixed(1) + 'S', '#9fe3f5']);
     for (const [txt, col] of info) {
@@ -2101,6 +2237,7 @@
       if (t.zap) drawText('ZAP ' + t.zap.damage + '/' + t.zap.every + 'S', tx, ty + 24, '#ffe14d');
       if (t.freeze) drawText('SLOW ' + t.freeze.time + 'S', tx, ty + 24, '#9fe3f5');
       if (t.shocker) drawText('STUN ' + t.shocker.stun + 'S', tx, ty + 24, '#7fd8ff');
+      if (t.chains) drawText('CHAIN ' + t.chains.hold + 'S', tx, ty + 24, '#c9ced6');
     });
   }
 
@@ -2124,6 +2261,7 @@
       drawWebs();
       drawSpikes();
       drawMiniBombs();
+      drawChains();
       for (const b of balls) drawWeapon(b);
       for (const b of balls) drawBallWithFlash(b);
       for (const b of balls) drawWrap(b);

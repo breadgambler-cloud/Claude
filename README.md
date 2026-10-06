@@ -26,6 +26,7 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | Lightning Ball | 100 | 4, zap 6 |
 | Ice Ball | 100 | 7 |
 | Shocker Ball | 100 | 7, shock 6 |
+| Chained Ball | 100 | 8 |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
 When two axes meet they clang off each other and both reverse direction.
@@ -67,3 +68,7 @@ The Ice Ball's hits chill the enemy, who moves at half speed for 2 seconds.
 The Shocker Ball charges up with blue electricity for 1.5 seconds, every 3 seconds. If the enemy hits it while it's
 charged (body, axe or bite), the enemy takes 6 damage and is stunned for 1.5 seconds: frozen in place and unable to
 deal any damage.
+
+Every wall the Chained Ball hits gives it a chain anchored to that spot (up to 3 chains at once). When it hits the
+enemy, its oldest held chain locks onto them and reels them toward that wall for 3 seconds. A chained ball can't move
+farther from the anchor than the chain allows.
