@@ -454,6 +454,31 @@
       // who touch them. They can't be hurt; only the head takes damage.
       snake: { bouncesFor: [1, 2, 3, 4, 5], segDamage: 4, hitCooldown: 0.4, spacing: 17, segRadius: [10, 9, 9, 8, 7] },
     },
+    hook: {
+      name: 'HOOK BALL',
+      short: 'HOOK',
+      hp: 100,
+      damage: 5,
+      mass: 1,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#7fc4d6', base: '#2f7f99', dark: '#1d5168', rim: '#0a1f2a' },
+      rope: true,    // a twisted rope band around its middle
+      // A hook circles it like the Axe Ball's axe. When the hook catches the enemy, it is
+      // swung around fast, then flung away. Every wall it slams into while swung or flung
+      // costs it 10 HP.
+      hook: {
+        reach: 24,         // ball center to the hook's point
+        spin: 3,           // radians per second while hunting
+        swingSpin: 10,     // radians per second with an enemy on the hook
+        catchDamage: 3,
+        hold: 2.2,         // seconds an enemy stays on the hook
+        slamDamage: 10,    // per wall hit
+        slamCooldown: 0.3, // seconds between slams on the same ball
+        fling: 1.5,        // seconds after the throw that wall hits still count as slams
+        cooldown: 2,       // seconds before the hook can catch again
+      },
+    },
   };
   // Body segments reuse the snake's colors and scales; this type is only used to draw them.
   const SNAKE_BODY = { colors: BALL_TYPES.snake.colors, scales: true, radius: 10, body: true };
@@ -742,6 +767,17 @@
       // the reference ball: a thin seam around its middle, bowed like a sphere's equator
       const fy = x => 5 + 1 * Math.sqrt(Math.max(0, 1 - (x / BR) ** 2));
       paint((x, y) => curve(fy)(x, y) ? col.dark : null);
+    }
+    if (type.rope) {
+      // a twisted rope band around the middle: tan and brown strands, dark edges
+      const fy = x => 1.2 * Math.sqrt(Math.max(0, 1 - (x / BR) ** 2));
+      paint((x, y) => {
+        const dy = y - fy(x);
+        if (Math.abs(dy) > 2.2) return null;
+        if (Math.abs(dy) > 1.6) return '#3a2410';
+        const twist = (((x - dy * 1.2) / 2.2) % 2 + 2) % 2;
+        return twist < 1 ? (dy < 0 ? '#f0d39a' : '#d9b27a') : (dy < 0 ? '#a8763c' : '#7a5228');
+      });
     }
     if (type.seam) {
       // molten crack down the middle: white-hot core, orange sides, a soft glow and a few embers
@@ -1168,6 +1204,8 @@
       gunAng: side === 0 ? 0 : Math.PI, reload: t.gun ? 0.5 : 0, muzzle: 0,
       zoneStrand: null, zoneTick: 0, inZone: false,
       segs: [], path: [], snakeBounces: 0, segCd: 0,
+      hookAng: side === 0 ? -0.6 : Math.PI - 0.6, hookCd: 0, hooking: null, hookT: 0,
+      hookedBy: null, flung: 0, flungBy: null, slamCd: 0,
       // slime / healer
       gen: 0,
       healT: t.healer ? t.healer.everyMin : 0,
@@ -1705,6 +1743,7 @@
     if (hit && ball.type.chains) chainWallHit(ball, hit);
     if (hit && ball.type.zone) zoneWallHit(ball, hit);
     if (hit && ball.type.snake) snakeWallHit(ball);
+    if (hit && ball.flung > 0 && ball.flungBy) slamWall(ball, ball.flungBy, hit.x, hit.y);
     if (hit && ball.bleed > 0 && ball.bleedCd <= 0 && ball.bleedSrc) {
       ball.bleedCd = 0.2;
       hurt(ball, ball.bleedSrc.type.glass.bleedDamage, ball.bleedSrc, '#c0203a');
@@ -2668,6 +2707,83 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Hook Ball: catch the enemy on the hook, swing it around, fling it into the walls
+  // ---------------------------------------------------------------------------
+  function hookTip(b) {
+    const reach = b.type.hook.reach;
+    return { x: b.x + Math.cos(b.hookAng) * reach, y: b.y + Math.sin(b.hookAng) * reach };
+  }
+
+  // A swung or flung ball hits a wall.
+  function slamWall(v, owner, wx, wy) {
+    if (v.slamCd > 0 || !v.alive) return;
+    const cfg = owner.type.hook;
+    v.slamCd = cfg.slamCooldown;
+    hurt(v, cfg.slamDamage, owner, '#ff7a2f');
+    v.squash = 0.16;
+    shake = Math.max(shake, 0.18);
+    burst(wx, wy, { light: '#ffffff', base: '#d9b27a', dark: '#7a5228' }, 12);
+  }
+
+  function releaseHook(b, fling) {
+    const v = b.hooking;
+    b.hooking = null;
+    b.hookCd = b.type.hook.cooldown;
+    if (!v) return;
+    v.hookedBy = null;
+    if (fling && v.alive) {
+      v.flung = b.type.hook.fling;
+      v.flungBy = b;
+      clampSpeed(v);
+      popups.push({ x: v.x, y: v.y - 8, text: 'FLING!', t: 0, color: '#d9b27a' });
+    }
+  }
+
+  function updateHook(b, dt) {
+    const cfg = b.type.hook;
+    if (!cfg) return;
+    if (!b.alive || b.stuck > 0) { if (b.hooking) releaseHook(b, false); return; }
+    b.hookCd = Math.max(0, b.hookCd - dt);
+    const v = b.hooking;
+    b.hookAng -= (v ? cfg.swingSpin : cfg.spin) * dt;   // counter-clockwise, like the axe
+    if (v) {
+      if (!v.alive || v.stuck > 0 || v.phased) { releaseHook(b, false); return; }
+      // carry the enemy around on the hook; the walls stop it, and hurt
+      const R = b.r + 6 + v.r;
+      const c = Math.cos(b.hookAng), sn = Math.sin(b.hookAng);
+      let x = b.x + c * R, y = b.y + sn * R, slam = null;
+      if (x - v.r < PLAY.left)   { x = PLAY.left + v.r;   slam = [PLAY.left, y]; }
+      if (x + v.r > PLAY.right)  { x = PLAY.right - v.r;  slam = [PLAY.right, y]; }
+      if (y - v.r < PLAY.top)    { y = PLAY.top + v.r;    slam = [x, PLAY.top]; }
+      if (y + v.r > PLAY.bottom) { y = PLAY.bottom - v.r; slam = [x, PLAY.bottom]; }
+      v.x = x; v.y = y;
+      // its velocity follows the swing, so letting go throws it along the tangent
+      v.vx = sn * R * cfg.swingSpin + b.vx;
+      v.vy = -c * R * cfg.swingSpin + b.vy;
+      if (slam) slamWall(v, b, slam[0], slam[1]);
+      b.hookT -= dt;
+      if (b.hookT <= 0 || !v.alive) releaseHook(b, v.alive);
+      return;
+    }
+    if (b.hookCd > 0) return;
+    const tip = hookTip(b);
+    for (const o of balls) {
+      if (!o.alive || o.side === b.side || o.phased || o.latch || o.hookedBy || o.stuck > 0) continue;
+      if (Math.hypot(o.x - tip.x, o.y - tip.y) > o.r + 2) continue;
+      if (o.hooking) releaseHook(o, false);   // a hooked Hook Ball drops what it's holding
+      b.hooking = o;
+      b.hookT = cfg.hold;
+      o.hookedBy = b;
+      o.flung = 0;
+      hurt(o, cfg.catchDamage, b, '#d9b27a');
+      popups.push({ x: o.x, y: o.y - 8, text: 'HOOKED!', t: 0, color: '#d9b27a' });
+      burst(tip.x, tip.y, { light: '#ffffff', base: '#e4e8ee', dark: '#7a5228' }, 8);
+      shake = Math.max(shake, 0.1);
+      break;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Update
   // ---------------------------------------------------------------------------
   const STEP = 1 / 120;
@@ -2677,7 +2793,7 @@
     roundTimer += dt;
     if (state === 'fight') {
       for (const b of balls) {
-        if (!b.alive || b.stuck > 0 || b.latch) continue;
+        if (!b.alive || b.stuck > 0 || b.latch || b.hookedBy) continue;
         settleSpeed(b, dt);
         const slow = b.chill > 0 ? 1 - BALL_CHILL_SLOW : 1;   // chilled balls crawl
         b.x += b.vx * dt * slow;
@@ -2697,6 +2813,9 @@
         updateBalloon(b, dt);
         updateGun(b, dt);
         updateSnake(b, dt);
+        updateHook(b, dt);
+        b.slamCd = Math.max(0, b.slamCd - dt);
+        b.flung = Math.max(0, b.flung - dt);
         b.chill = Math.max(0, b.chill - dt);
       }
       for (const sp of spikes) sp.t += dt;
@@ -2713,6 +2832,7 @@
           if (!a.alive || !b.alive) continue;
           if ((a.latch && a.latch.target === b) || (b.latch && b.latch.target === a)) continue;
           if (a.phased || b.phased) continue;   // a faded ghost passes straight through
+          if (a.hooking === b || b.hooking === a) continue;   // the hook holds them apart
           axeClash(a, b);
           axeHits(a, b);
           axeHits(b, a);
@@ -3365,7 +3485,60 @@
     ctx.restore();
   }
 
+  // The Hook Ball's hook: a steel shaft out to `reach`, ending in a J that curls toward the
+  // way it spins (counter-clockwise), so the point leads. `k` scales the curl, for icons.
+  function drawHookArt(x, y, ang, reach, k = 1) {
+    const c = Math.cos(ang), sn = Math.sin(ang);
+    const at = (u, w) => [x + u * c - w * sn, y + u * sn + w * c];
+    const R = 3 * k, cu = reach - R, cw = -R;   // curl center: a little in from the end, on the leading side
+    const pts = [at(0, 0), at(cu, 0)];
+    for (let i = 0; i <= 12; i++) {
+      const a = Math.PI / 2 - i / 12 * (Math.PI * 4 / 3);   // from the shaft round the outside to the point
+      pts.push(at(cu + Math.cos(a) * R, cw + Math.sin(a) * R));
+    }
+    const point = pts[pts.length - 1];
+    const barb = at(cu - R * 1.6, cw - R * 0.2);   // the point flicks back toward the ball
+    const passes = [['#0e1218', 5], ['#8a929e', 3], ['#e4e8ee', 1]];
+    for (const [col, w] of passes) {
+      ctx.fillStyle = col;
+      for (let i = 0; i < pts.length - 1; i++) fineLine(...pts[i], ...pts[i + 1], w);
+      fineLine(...point, ...barb, w);
+    }
+    // a brass collar where the curl starts
+    const [qx, qy] = at(cu - 1.5 * k, 0);
+    ctx.fillStyle = '#0e1218'; fpx(qx - 1.5, qy - 1.5, 6, 6);
+    ctx.fillStyle = '#e8c45a'; fpx(qx - 1, qy - 1, 4, 4);
+  }
+
+  function drawHook(b) {
+    if (!b.type.hook || !b.alive) return;
+    const cfg = b.type.hook, v = b.hooking;
+    if (v) {
+      // the enemy is on the hook: a swoosh behind it (the hook itself is drawn over it, later)
+      const R = b.r + 6 + v.r;
+      for (let i = 1; i < 30; i++) {
+        const a = b.hookAng + i * 0.05;
+        ctx.globalAlpha = (1 - i / 30) * 0.8;
+        ctx.fillStyle = '#f0d39a';
+        for (const rr of [R - v.r + 2, R, R + v.r - 2]) fpx(b.x + Math.cos(a) * rr, b.y + Math.sin(a) * rr, 2, 2);
+      }
+      ctx.globalAlpha = 1;
+      return;
+    }
+    // resting after a throw: the hook is dimmed until it can catch again
+    if (b.hookCd > 0) ctx.globalAlpha = 0.55;
+    drawHookArt(b.x, b.y, b.hookAng, cfg.reach);
+    ctx.globalAlpha = 1;
+  }
+
+  // Over the balls: the hook sunk into the enemy it's holding.
+  function drawHookHeld(b) {
+    if (!b.type.hook || !b.alive || !b.hooking) return;
+    drawHookArt(b.x, b.y, b.hookAng, b.r + 6 + b.hooking.r * 0.7);
+  }
+
   function drawWeapon(b) {
+    drawHook(b);
     if (b.type.gun && b.alive) drawGun(b.x, b.y, b.r, b.gunAng, b.muzzle);
     if (b.type.cap && b.alive) drawFuse(b.x, b.y, b.r, b.fuse);
     if (b.type.zap && b.alive && b.zapT < 0.6) {
@@ -3549,6 +3722,7 @@
     const ix = alignRight ? x - (t.radius * 2 + 1) : x;
     const icx = ix + t.radius + 0.5, icy = 16 + t.radius + 0.5, now = performance.now();
     if (t.weapon) drawAxe(icx, icy, alignRight ? Math.PI + 0.25 : -0.25);
+    if (t.hook) drawHookArt(icx, icy, alignRight ? Math.PI + 0.6 : -0.6, t.radius + 7, 0.8);
     if (t.legs) drawLegs(icx, icy, t.radius, now / 250);
     if (t.studs) drawStuds(icx, icy, t.radius, now / 600);
     const iconFace = alignRight ? Math.PI : 0;
@@ -3613,6 +3787,11 @@
       const n = ball.segs.length, need = t.snake.bouncesFor[n];
       info.push([n >= t.snake.bouncesFor.length ? 'BODY 5/5 FULL' : 'BODY ' + n + '/5 GROW ' + ball.snakeBounces + '/' + need, '#9fe07a']);
     }
+    if (t.hook) {
+      if (ball.hooking) info.push(['SWINGING ' + Math.max(0, ball.hookT).toFixed(1) + 'S', '#f0d39a']);
+      else info.push(ball.hookCd > 0 ? ['HOOK IN ' + ball.hookCd.toFixed(1) + 'S', '#a8763c'] : ['HOOK READY', '#d9b27a']);
+    }
+    if (ball.hookedBy && ball.alive) info.push(['HOOKED!', '#ff7a2f']);
     if (t.zone) info.push(['ZONES ' + zones.filter(z => z.owner === ball).length + '/' + t.zone.max + (ball.zoneStrand ? ' DRAWING' : ''), '#ff7a7a']);
     if (ball.inZone && ball.alive) info.push(['IN A ZONE!', '#ff4f4f']);
     if (t.gun) info.push(ball.reload > 0 ? ['RELOADING ' + ball.reload.toFixed(1) + 'S', '#e8c48a'] : ['LOADED', '#ffe14d']);
@@ -3709,6 +3888,7 @@
 
   // One short line describing a ball's special, for its card.
   function abilityText(t) {
+    if (t.hook) return ['SLAM ' + t.hook.slamDamage, '#d9b27a'];
     if (t.snake) return ['BODY ' + t.snake.segDamage, '#9fe07a'];
     if (t.zone) return ['IN ZONE ' + t.zone.damage, '#ff7a7a'];
     if (t.gun) return ['GUN ' + t.gun.damage, '#ffe14d'];
@@ -3811,6 +3991,7 @@
         const ang = -Math.PI * 0.75 - (hot ? performance.now() / 300 : 0);
         drawAxe(cx, cy, ang, 1, 0.5 * k);
       }
+      if (t.hook) drawHookArt(cx, cy, -Math.PI * 0.75 - (hot ? performance.now() / 300 : 0), rr + 6, 0.6);
       if (t.legs) drawLegs(cx, cy, rr, hot ? performance.now() / 120 : 0);
       if (t.studs) drawStuds(cx, cy, rr, hot ? performance.now() / 300 : 0);
       if (t.fangs) drawCape(cx, cy, rr, 0);
@@ -3889,6 +4070,7 @@
       for (const b of balls) drawSnakeBody(b);
       for (const b of balls) drawWeapon(b);
       for (const b of balls) drawBallWithFlash(b);
+      for (const b of balls) drawHookHeld(b);
       for (const b of balls) drawWrap(b);
       for (const b of balls) drawCharge(b);
       for (const b of balls) drawShield(b);

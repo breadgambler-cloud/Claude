@@ -38,6 +38,7 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | WCD Ball | 120 | the box number (1–75), or 5 |
 | Zone Ball | 100 | 6, zones 2 every 0.5 s |
 | Snake Ball | 100 | 6, body segments 4 |
+| Hook Ball | 100 | 5, hook 3, wall slams 10 |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
 When two axes meet they clang off each other and both reverse direction.
@@ -117,3 +118,7 @@ zone takes 2 damage every half second for as long as it stays there, and overlap
 The Snake Ball grows its body from wall bounces: the 1st segment takes 1 bounce, the 2nd 2 more, then 3, then 4, and
 the 5th (the tail) 5 more. The segments trail behind the head like a snake. They're solid barriers: enemies bounce off
 them and take 4 damage. Segments can't be hurt; only the head takes damage.
+
+The Hook Ball has a hook that circles it like the Axe Ball's axe. When the hook catches the enemy (3 damage), it swings
+it around fast for 2.2 seconds and then flings it away. Every wall the enemy slams into while swung, or for 1.5 seconds
+after the throw, costs it 10 HP. The hook needs 2 seconds to reset before it can catch again.
