@@ -42,6 +42,7 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | Virus Ball | 90 | 5, poison 1 per tick |
 | Beam Ball | 100 | 5, beam 9 |
 | Shackled Ball | 100 | 6, cage walls 5 |
+| Rubber Ball | 60 | 3-18, by speed |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
 When two axes meet they clang off each other and both reverse direction.
@@ -136,3 +137,6 @@ heading.
 The Shackled Ball drops red cages ringed with glowing red chain around the arena, one every 2.5 seconds (up to 3; an
 unused cage fades after 12 seconds). An enemy that rolls into a cage is trapped inside for 5 seconds. Every hit on the
 cage wall costs it 5 HP, and 3 hits break the cage open; otherwise it waits out the 5 seconds.
+
+The Rubber Ball is small and takes 25% less damage. Every wall bounce makes it faster (up to a cruising speed of 320),
+and it springs back up to speed quickly after a collision. Its hits deal its current speed / 22, from 3 up to 18.

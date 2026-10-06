@@ -521,6 +521,21 @@
       // 3 hits break the cage open.
       cage: { every: 2.5, max: 3, radius: 20, trap: 5, wallDamage: 5, breakHits: 3, life: 12 },
     },
+    rubber: {
+      name: 'RUBBER BALL',
+      short: 'RUBBER',
+      hp: 60,
+      damage: 5,
+      mass: 0.8,
+      radius: 8,     // small
+      speed: 140,
+      colors: { light: '#ffd0e6', base: '#ff5fa8', dark: '#c8307a', rim: '#4a0828', glow: '#ffe0f0' },
+      equator: true, // a molded seam, like a real bouncy ball
+      // Takes 25% less damage. Every wall bounce makes it faster, and the faster it moves,
+      // the harder it hits: damage = speed / 22, from 3 up to 18. It's bouncy: after a
+      // collision it springs back up to speed quickly.
+      rubber: { taken: 0.75, gain: 15, maxSpeed: 320, per: 22, dmg: [3, 18], rebound: 1.5 },
+    },
   };
   // Body segments reuse the snake's colors and scales; this type is only used to draw them.
   const SNAKE_BODY = { colors: BALL_TYPES.snake.colors, scales: true, radius: 10, body: true };
@@ -1543,6 +1558,7 @@
     }
     if (ball.type.slime) amount = Math.max(1, Math.round(amount * ball.type.slime.taken[ball.gen]));
     if (ball.type.balloon) amount = Math.max(1, Math.round(amount * lerp(...ball.type.balloon.taken, ball.inflate)));
+    if (ball.type.rubber) amount = Math.max(1, Math.round(amount * ball.type.rubber.taken));
     if (!firstHitDone) {
       firstHitDone = true;
       popups.push({ x: attacker.x, y: attacker.y - attacker.r - 12, text: 'FIRST HIT!', t: -0.4, color: SIDES[attacker.side].color });
@@ -1616,6 +1632,7 @@
   function baseDamage(ball) {
     if (ball.type.slime) return ball.type.slime.damage[ball.gen];
     if (ball.type.balloon) return Math.round(lerp(...ball.type.balloon.damage, ball.inflate));
+    if (ball.type.rubber) return rubberDamage(ball);
     const range = ball.type.damageRange;
     if (range) return randInt(range[0], range[1]);
     if (!ball.type.rng) return ball.type.damage;
@@ -1822,7 +1839,8 @@
   // Very slowly ease a ball's speed back toward its cruising speed.
   function settleSpeed(ball, dt) {
     const s = Math.hypot(ball.vx, ball.vy) || 1;
-    const next = s + (ballSpeed(ball) - s) * Math.min(1, 0.12 * dt);
+    const rate = ball.type.rubber ? ball.type.rubber.rebound : 0.12;   // rubber springs back to speed fast
+    const next = s + (ballSpeed(ball) - s) * Math.min(1, rate * dt);
     ball.vx = ball.vx / s * next;
     ball.vy = ball.vy / s * next;
   }
@@ -1838,6 +1856,7 @@
     if (hit && ball.type.chains) chainWallHit(ball, hit);
     if (hit && ball.type.zone) zoneWallHit(ball, hit);
     if (hit && ball.type.snake) snakeWallHit(ball);
+    if (hit && ball.type.rubber) rubberBounce(ball);
     if (hit && ball.bleed > 0 && ball.bleedCd <= 0 && ball.bleedSrc) {
       ball.bleedCd = 0.2;
       hurt(ball, ball.bleedSrc.type.glass.bleedDamage, ball.bleedSrc, '#c0203a');
@@ -2798,6 +2817,40 @@
         break;
       }
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Rubber Ball: every bounce speeds it up, and speed is damage
+  // ---------------------------------------------------------------------------
+  function rubberDamage(b) {
+    const cfg = b.type.rubber;
+    const sp = Math.hypot(b.vx, b.vy);
+    return Math.max(cfg.dmg[0], Math.min(cfg.dmg[1], Math.round(sp / cfg.per)));
+  }
+
+  function rubberBounce(b) {
+    const cfg = b.type.rubber;
+    const old = ballSpeed(b);
+    if (old >= cfg.maxSpeed) return;
+    b.speed = Math.min(cfg.maxSpeed, old + cfg.gain);
+    const k = b.speed / old;   // it really does come off the wall faster
+    b.vx *= k; b.vy *= k;
+  }
+
+  // Speed streaks behind a fast Rubber Ball.
+  function drawRubberTrail(b) {
+    if (!b.type.rubber || !b.alive) return;
+    const sp = Math.hypot(b.vx, b.vy);
+    if (sp < 180) return;
+    const ux = -b.vx / sp, uy = -b.vy / sp, px = -uy, py = ux;
+    const len = Math.min(18, (sp - 160) / 14);
+    for (const [off, a] of [[-0.55, 0.35], [0, 0.55], [0.55, 0.35]]) {
+      ctx.globalAlpha = a;
+      ctx.fillStyle = '#ff8ac0';
+      const sx = b.x + ux * b.r * 0.6 + px * off * b.r, sy = b.y + uy * b.r * 0.6 + py * off * b.r;
+      fineLine(sx, sy, sx + ux * len * (off ? 0.7 : 1), sy + uy * len * (off ? 0.7 : 1), 2);
+    }
+    ctx.globalAlpha = 1;
   }
 
   // ---------------------------------------------------------------------------
@@ -3940,6 +3993,7 @@
 
   function drawWeapon(b) {
     drawHook(b);
+    drawRubberTrail(b);
     if (b.type.beam && b.alive) drawEmitter(b.x, b.y, b.r, b.beamAng, b.beamPhase !== 'idle');
     if (b.type.gun && b.alive) drawGun(b.x, b.y, b.r, b.gunAng, b.muzzle);
     if (b.type.cap && b.alive) drawFuse(b.x, b.y, b.r, b.fuse);
@@ -4215,6 +4269,7 @@
       if (ball.chainT > 0) info.push(['LOCKED ' + ball.chainT.toFixed(1) + 'S', '#ffe14d']);
     }
     if (t.shocker) info.push(ball.charged > 0 ? ['CHARGED ' + ball.charged.toFixed(1) + 'S', '#ffffff'] : ['CHARGE IN ' + Math.max(0, ball.shockT).toFixed(1) + 'S', '#7fd8ff']);
+    if (t.rubber) info.push(['SPEED ' + Math.round(Math.hypot(ball.vx, ball.vy)) + ' HIT ' + rubberDamage(ball), '#ff8ac0']);
     if (t.beam) info.push(ball.beamPhase === 'fire' ? ['FIRING!', '#ffffff'] : ball.beamPhase === 'charge' ? ['CHARGING', '#9ff8ff'] : ['BEAM IN ' + Math.max(0, ball.beamT).toFixed(1) + 'S', '#5ff5ff']);
     if (t.cage) info.push(['CAGES ' + cages.filter(c => c.owner === ball).length + '/' + t.cage.max, '#ff5a6a']);
     if (ball.cage && ball.alive) info.push(['CAGED ' + Math.max(0, ball.cage.trapT).toFixed(1) + 'S HITS ' + ball.cage.hits + '/' + ball.cage.owner.type.cage.breakHits, '#ffd0d6']);
@@ -4259,7 +4314,7 @@
       line += 8;
     }
     const speed = ball.stuck > 0 ? 'STUNNED ' + ball.stuck.toFixed(1) + 'S'
-      : 'SPEED X' + (Math.hypot(ball.vx, ball.vy) / ballSpeed(ball)).toFixed(1);
+      : 'SPEED X' + (Math.hypot(ball.vx, ball.vy) / (ball.type.rubber ? ball.type.speed : ballSpeed(ball))).toFixed(1);   // rubber: vs its starting speed
     text(speed, alignRight ? x - textWidth(speed) : x, line, ball.stuck > 0 ? '#ffffff' : '#9fe6ff');
     if (state === 'aim') {
       const hint = 'CLICK TO CHANGE';
@@ -4297,6 +4352,7 @@
 
   // One short line describing a ball's special, for its card.
   function abilityText(t) {
+    if (t.rubber) return ['-25% DMG', '#ff8ac0'];
     if (t.beam) return ['BEAM ' + t.beam.damage, '#5ff5ff'];
     if (t.cage) return ['CAGE ' + t.cage.trap + 'S', '#ff5a6a'];
     if (t.virus) return ['POISON ' + t.virus.ticks, '#9fe07a'];
@@ -4422,7 +4478,8 @@
       // stats on the right
       const hit = t.rng ? t.rng.min + '-' + t.rng.max
         : t.damageRange ? t.damageRange[0] + '-' + t.damageRange[1]
-        : t.balloon ? t.balloon.damage[0] + '-' + t.balloon.damage[1] : String(t.damage);
+        : t.balloon ? t.balloon.damage[0] + '-' + t.balloon.damage[1]
+        : t.rubber ? t.rubber.dmg[0] + '-' + t.rubber.dmg[1] : String(t.damage);
       const [abilityTxt, abilityCol] = abilityText(t);
       if (compact) {
         // three lines: name / heart HP + sword damage / ability
