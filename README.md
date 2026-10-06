@@ -69,6 +69,6 @@ The Shocker Ball charges up with blue electricity for 1.5 seconds, every 3 secon
 charged (body, axe or bite), the enemy takes 6 damage and is stunned for 1.5 seconds: frozen in place and unable to
 deal any damage.
 
-Every wall the Chained Ball hits gives it a chain anchored to that spot (up to 3 chains at once). When it hits the
-enemy, its oldest held chain locks onto them and reels them toward that wall for 3 seconds. A chained ball can't move
-farther from the anchor than the chain allows.
+Every wall the Chained Ball hits gives it a chain anchored to that spot (up to 3 chains at once). Each hit on the
+enemy locks one held chain onto them, reeling them toward that wall. A chained ball can't move farther from the anchor
+than the chain allows. Locked chains stay on until all 3 are locked; then they hold for 3 seconds and all break.

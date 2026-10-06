@@ -289,11 +289,13 @@
       speed: 130,
       colors: { light: '#b7a58a', base: '#7a6a55', dark: '#4d4234', rim: '#221c14' },
       links: true,   // iron chain links around its rim
-      // Every wall it hits gives it a chain anchored to that spot. When it hits
-      // an enemy, a held chain locks onto them and reels them toward that wall.
+      // Every wall it hits gives it a chain anchored to that spot. Each hit on an
+      // enemy locks one held chain onto them, reeling them toward that wall. Locked
+      // chains stay on until all 3 are on; then they hold for 3 seconds and break.
       chains: {
         max: 3,        // chains at once (held + locked on)
-        hold: 3,       // seconds a chain holds an enemy
+        hold: 3,       // seconds all chains hold once every one is locked on
+        latchCooldown: 0.5,   // seconds between locking chains, so one hit locks one chain
         reel: 90,      // pixels per second the chain pulls in
         minLen: 26,    // closest the chain drags them to the wall
       },
@@ -706,6 +708,8 @@
       chill: 0,
       // shocker / stun
       shockT: t.shocker ? t.shocker.every : 0, charged: 0, stunned: false,
+      // chained
+      chainCd: 0, chainT: 0,
     };
     if (t.rng) rollRng(ball);   // the first roll starts at launch
     return ball;
@@ -1272,23 +1276,42 @@
   function chainHit(owner, foe) {
     const cfg = owner.type.chains;
     if (!cfg || !owner.alive || !foe.alive || foe.phased || foe.side === owner.side) return;
+    if (owner.chainCd > 0) return;   // one chain per hit
     const c = chains.find(c => c.owner === owner && !c.target);
     if (!c) return;
     c.target = foe;
-    c.t = cfg.hold;
     c.len = Math.hypot(foe.x - c.ax, foe.y - c.ay);
-    popups.push({ x: foe.x, y: foe.y - foe.r - 12, text: 'CHAINED!', t: -0.1, color: '#c9ced6' });
+    owner.chainCd = cfg.latchCooldown;
+    const on = chains.filter(c2 => c2.owner === owner && c2.target).length;
+    popups.push({ x: foe.x, y: foe.y - foe.r - 12, text: 'CHAINED ' + on + '/' + cfg.max, t: -0.1, color: '#c9ced6' });
     burst(foe.x, foe.y, { light: '#ffffff', base: '#c9ced6', dark: '#6c737d' }, 10);
+    if (on >= cfg.max) {
+      // all chains on: the countdown starts
+      owner.chainT = cfg.hold;
+      popups.push({ x: foe.x, y: foe.y - foe.r - 22, text: 'LOCKED DOWN!', t: -0.3, color: '#ffe14d' });
+      shake = Math.max(shake, 0.2);
+    }
   }
 
   // Locked chains reel their target toward the wall and won't let them stray past the chain's length.
   function updateChains(dt) {
+    // once every chain is on, they hold for a few seconds and then all break
+    for (const b of balls) {
+      if (!b.type.chains) continue;
+      b.chainCd = Math.max(0, b.chainCd - dt);
+      if (b.chainT > 0) {
+        b.chainT -= dt;
+        if (b.chainT <= 0) {
+          b.chainT = 0;
+          for (const c of chains) if (c.owner === b && c.target) c.done = true;
+        }
+      }
+    }
     for (const c of chains) {
-      if (!c.target) continue;
+      if (!c.target || c.done) continue;
       const cfg = c.owner.type.chains;
       const b = c.target;
-      c.t -= dt;
-      if (c.t <= 0 || !b.alive || b.phased || !c.owner.alive) { c.done = true; continue; }
+      if (!b.alive || b.phased || !c.owner.alive) { c.done = true; continue; }
       c.len = Math.max(cfg.minLen, c.len - cfg.reel * dt);
       const dx = b.x - c.ax, dy = b.y - c.ay, d = Math.hypot(dx, dy) || 1;
       if (d > c.len) {
@@ -1300,7 +1323,10 @@
       }
     }
     for (const c of chains) {
-      if (c.done) burst(c.target.x, c.target.y, { light: '#ffffff', base: '#c9ced6', dark: '#6c737d' }, 6);
+      if (c.done) {
+        burst(c.target.x, c.target.y, { light: '#ffffff', base: '#c9ced6', dark: '#6c737d' }, 6);
+        c.owner.chainT = 0;   // if a chain broke early, the lock-down is over too
+      }
     }
     chains = chains.filter(c => !c.done && c.owner.alive);
   }
@@ -2135,6 +2161,7 @@
     if (t.chains) {
       const mine = chains.filter(c => c.owner === ball);
       info.push(['CHAINS ' + mine.length + '/' + t.chains.max + ' (' + mine.filter(c => c.target).length + ' ON)', '#c9ced6']);
+      if (ball.chainT > 0) info.push(['LOCKED ' + ball.chainT.toFixed(1) + 'S', '#ffe14d']);
     }
     if (t.shocker) info.push(ball.charged > 0 ? ['CHARGED ' + ball.charged.toFixed(1) + 'S', '#ffffff'] : ['CHARGE IN ' + Math.max(0, ball.shockT).toFixed(1) + 'S', '#7fd8ff']);
     if (ball.chill > 0) info.push(['SLOWED ' + ball.chill.toFixed(1) + 'S', '#9fe3f5']);
