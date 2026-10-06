@@ -757,9 +757,33 @@
       spec = null;
     }
     if (type.bolt) {
-      // a navy lightning bolt that zigs past the left of the HP number
-      const inBolt = poly([[-0.4, -11.8], [6.2, -10.8], [-2.2, -4.4], [1.2, -4.4], [-7.4, 10.6], [-6.2, 1.8], [-10.6, 1.8]]);
-      shape(inBolt, { o: '#0a1033', l: '#ffffff' }, '#1a2766');
+      // a jagged lightning bolt from rim to rim. Its two zigs sit just above and below the HP
+      // number, so the bolt still reads while the number covers the middle. White-hot core,
+      // pale yellow edges, a thick navy outline and an electric-blue glow, with sparks off the tips.
+      const zig = [[5.6, -13], [-1.4, -5.4], [4.6, -5.2], [-3.6, 5.2], [2.4, 5.4], [-4.8, 13]];
+      const inBolt = (x, y) => {
+        // thicker at the top, tapering toward the bottom tip
+        for (let k = 0; k < zig.length - 1; k++) {
+          const w = 3.4 - k * 0.45;
+          if (segDist(x, y, ...zig[k], ...zig[k + 1]) <= w / 2) return true;
+        }
+        return false;
+      };
+      const near = (x, y, n) => inBolt(x + n, y) || inBolt(x - n, y) || inBolt(x, y + n) || inBolt(x, y - n)
+        || inBolt(x + n * 0.7, y + n * 0.7) || inBolt(x - n * 0.7, y - n * 0.7) || inBolt(x + n * 0.7, y - n * 0.7) || inBolt(x - n * 0.7, y + n * 0.7);
+      paint((x, y) => {
+        if (inBolt(x, y)) return;
+        if (near(x, y, E)) return '#0a1033';                 // thick dark outline (with the 1 hi-px one below: 2 hi-px)
+        if (near(x, y, 2.5 * E)) return ['#3d7bff', 0.6];    // electric glow
+        if (near(x, y, 4 * E)) return ['#3d7bff', 0.25];
+      });
+      shape(inBolt, { o: '#0a1033', l: '#ffffff', d: '#ffc21f' }, (x, y) => {
+        const deep = inBolt(x + 2.5 * E, y) && inBolt(x - 2.5 * E, y) && inBolt(x, y + 2.5 * E) && inBolt(x, y - 2.5 * E);
+        return deep ? '#ffffff' : '#fff3a0';
+      });
+      // sparks flying off both tips
+      for (const [sx, sy] of [[7.6, -11.6], [8.6, -12.8], [-6.6, 11.4], [-7.6, 12.4], [-2.6, 12.6]]) dot(sx, sy, 1, 1, '#ffffff');
+      for (const [sx, sy] of [[7.2, -10.2], [-7.4, 10.2]]) dot(sx, sy, 1, 1, '#3d7bff');
     }
     if (type.zoneMark) {
       // four white corner brackets framing the HP number, like a target lock
@@ -859,11 +883,11 @@
       paint((x, y) => halo(x, y) && (y > -13 || !body(x, y)) ? ['#ffe14d', 0.8] : null, true);
     }
     if (type.links) {
-      // two chains crossing in an X, bowed around the sphere, with a gap for the HP number.
+      // three chains wrapped right around the ball, rim to rim: an X plus a belt around the
+      // middle, each bowed like it's hugging the sphere. Where they cross, the later chain lies on top.
       // Links alternate: a flat ring (two rails and a hole) then one seen edge-on (a bar).
       const chainAt = (x, y) => {
-        if (inPlate(x, y, 0.3)) return null;
-        for (const [a, bow] of [[1.0, 1.2], [-1.0, -1.2]]) {
+        for (const [a, bow] of [[0, 2.4], [1.0, 1.2], [-1.0, -1.2]]) {
           const [u, v0] = turn(x, y, a), v = v0 - bow * (1 - (u / BR) ** 2);
           if (Math.abs(v) > 1.6) continue;
           const link = Math.floor((u + BR) / 3.2), f = (u + BR) / 3.2 - link;
