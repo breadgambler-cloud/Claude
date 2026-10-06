@@ -384,6 +384,35 @@
         popDamage: 10, popRadius: 40,
       },
     },
+    gunslinger: {
+      name: 'GUNSLINGER BALL',
+      short: 'GUNSLNGR',
+      hp: 100,
+      damage: 4,
+      mass: 1,
+      radius: 12,
+      speed: 160,        // quick on its feet
+      colors: { light: '#e8c48a', base: '#b5803f', dark: '#7a5226', rim: '#3a240f' },
+      hat: true,         // cowboy hat
+      // Keeps its revolver pointed at the enemy and fires a fast bullet that can bounce
+      // off one wall. Then it has to reload.
+      gun: { damage: 7, reload: 1.1, bulletSpeed: 330, bounces: 1, turnRate: 9 },
+    },
+    wcd: {
+      name: 'WCD BALL',
+      short: 'WCD',
+      hp: 120,
+      damage: 5,
+      mass: 1,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#ffffff', base: '#f2f2f6', dark: '#c9cbd6', rim: '#5f6478' },
+      bingo: true,       // bingo-ball stripe
+      // Lays a 5x5 grid of numbers (1-75, mostly low, at least 2 high) over the arena.
+      // When it hits an enemy, the enemy takes the number of the box it's in, and that
+      // box is crossed off. Hits in crossed-off boxes only do its normal 5.
+      wcd: { size: 5, min: 1, max: 75, high: 50, minHigh: 2 },
+    },
   };
   const BALL_ORDER = Object.keys(BALL_TYPES);
 
@@ -565,6 +594,25 @@
           const x = Math.round(r + x0 + (x1 - x0) * k / n), y = Math.round(r + y0 + (y1 - y0) * k / n);
           g.fillRect(x - 1, y, 2, 1);
         }
+      }
+    }
+    if (type.hat) {
+      // cowboy hat: crown and a wide brim across the top
+      g.fillStyle = '#3a240f'; g.fillRect(r - 5, 0, 11, 5); g.fillRect(r - 10, 4, 21, 3);
+      g.fillStyle = '#6b4220'; g.fillRect(r - 4, 1, 9, 3); g.fillRect(r - 9, 5, 19, 1);
+      g.fillStyle = '#c0392b'; g.fillRect(r - 4, 3, 9, 1);   // hat band
+      // bandana knot near the bottom
+      g.fillStyle = '#c0392b'; g.fillRect(r - 5, d - 6, 11, 2);
+    }
+    if (type.bingo) {
+      // a colored stripe around the middle like a bingo ball, with a white label circle
+      for (let py = r - 6; py <= r + 6; py++) for (let px = 0; px < d; px++) {
+        if ((px - r) ** 2 + (py - r) ** 2 > (r - 1.2) ** 2) continue;
+        g.fillStyle = py === r - 6 || py === r + 6 ? '#1f3a8a' : '#2f6fdc';
+        g.fillRect(px, py, 1, 1);
+      }
+      for (let py = r - 5; py <= r + 5; py++) for (let px = r - 5; px <= r + 5; px++) {
+        if ((px - r) ** 2 + (py - r) ** 2 <= 25) { g.fillStyle = '#ffffff'; g.fillRect(px, py, 1, 1); }
       }
     }
     if (type.horseshoe) {
@@ -801,6 +849,8 @@
   let chains = [];   // {owner, ax, ay, target, t, len}
   let heals = [];    // heal pickups dropped by the Healer Ball
   let shards = [];   // glass shards
+  let bullets = [];  // gunslinger bullets
+  let grid = null;   // the WCD ball's numbered grid: {cells: [{n, used}]}
   const picks = ['normal', 'normal'];   // ball type for YOU and CPU
   let hoverCard = -1;
 
@@ -840,6 +890,7 @@
       magT: t.magnet ? t.magnet.rest : 0, pulling: false,
       bleed: 0, bleedSrc: null, bleedCd: 0,
       inflate: 0,
+      gunAng: side === 0 ? 0 : Math.PI, reload: t.gun ? 0.5 : 0, muzzle: 0,
       // slime / healer
       gen: 0,
       healT: t.healer ? t.healer.everyMin : 0,
@@ -878,6 +929,7 @@
   function startSelect(step = 0) {
     state = 'select';
     selectStep = step;
+    scrollY = 0;
     popups = [];
     particles = [];
     shake = 0;
@@ -887,6 +939,7 @@
     if (selectStep === 0) {
       picks[0] = key === RANDOM ? BALL_ORDER[Math.floor(Math.random() * BALL_ORDER.length)] : key;
       selectStep = 1;
+      scrollY = 0;
       hoverCard = -1;
       return;
     }
@@ -900,13 +953,23 @@
   }
 
   // Card rectangles on the pick screen: a two-column grid inside the arena.
+  // The cards scroll inside this window when there are more than fit.
+  const CARD_VIEW = { top: 33, bottom: H - 8 };
+  const CARD_H = 32, CARD_GAP = 3;
+  let scrollY = 0;
+
+  function cardsHeight() {
+    const rows = Math.ceil(selectKeys().length / 4);
+    return rows * (CARD_H + CARD_GAP) - CARD_GAP + 2;
+  }
+  function maxScroll() { return Math.max(0, cardsHeight() - (CARD_VIEW.bottom - CARD_VIEW.top)); }
+  function scrollBy(dy) { scrollY = Math.max(0, Math.min(maxScroll(), scrollY + dy)); }
+
   function cardRects() {
-    const cols = 4, gap = 3, w = 70;
-    const y0 = 34;
+    const cols = 4, gap = CARD_GAP, w = 70, h = CARD_H;
+    const y0 = CARD_VIEW.top + 1 - Math.round(scrollY);
     const keys = selectKeys();
     const n = keys.length;
-    const rows = Math.ceil(n / cols);
-    const h = Math.min(40, Math.floor((H - 9 - y0 - (rows - 1) * gap) / rows));
     return keys.map((key, i) => {
       // each row is centered, so a short last row sits in the middle
       const row = Math.floor(i / cols);
@@ -918,6 +981,7 @@
   }
 
   function cardAt(p) {
+    if (p.y < CARD_VIEW.top || p.y > CARD_VIEW.bottom) return -1;   // scrolled out of view
     return cardRects().findIndex(c => p.x >= c.x && p.x < c.x + c.w && p.y >= c.y && p.y < c.y + c.h);
   }
 
@@ -938,6 +1002,8 @@
     chains = [];
     heals = [];
     shards = [];
+    bullets = [];
+    grid = balls.some(b => b.type.wcd) ? makeGrid(balls.find(b => b.type.wcd).type.wcd) : null;
     state = 'aim';      // select -> aim -> fight -> over
     winner = null;
     shake = 0;
@@ -994,17 +1060,41 @@
   canvas.addEventListener('pointermove', e => {
     const p = toGame(e);
     if (state === 'aim' && dragging) { dragging.aimX = p.x; dragging.aimY = p.y; }
+    if (state === 'select' && selDrag) {
+      const dy = p.y - selDrag.y;
+      if (Math.abs(dy) > 3) selDrag.moved = true;
+      if (selDrag.moved) scrollY = Math.max(0, Math.min(maxScroll(), selDrag.scroll - dy));
+    }
     hoverCard = state === 'select' ? cardAt(p) : -1;
     const grab = state === 'aim' && (dragging || ballAt(p));
     canvas.style.cursor = dragging ? 'grabbing' : grab ? 'grab'
       : hoverCard >= 0 || (state === 'aim' && onLaunchBtn(p)) ? 'pointer' : 'default';
   });
-  addEventListener('pointerup', () => { dragging = null; });
+  let selDrag = null;
+  addEventListener('pointerup', e => {
+    dragging = null;
+    if (selDrag && state === 'select') {
+      const moved = selDrag.moved;
+      selDrag = null;
+      if (!moved) {
+        const i = cardAt(toGame(e));
+        if (i >= 0) choose(selectKeys()[i]);
+      }
+    }
+    selDrag = null;
+  });
+  canvas.addEventListener('wheel', e => {
+    if (state !== 'select') return;
+    e.preventDefault();
+    scrollBy(e.deltaY * 0.12);
+    hoverCard = cardAt(toGame(e));
+  }, { passive: false });
   canvas.addEventListener('pointerdown', e => {
     const p = toGame(e);
     if (state === 'select') {
-      const i = cardAt(p);
-      if (i >= 0) choose(selectKeys()[i]);
+      // press-and-release picks a card; press-and-drag scrolls the list
+      selDrag = { y: p.y, scroll: scrollY, moved: false, id: e.pointerId };
+      canvas.setPointerCapture?.(e.pointerId);
     } else if (state === 'aim') {
       const b = ballAt(p);
       if (b) {
@@ -1024,6 +1114,8 @@
     if ((e.key === 'r' || e.key === 'R') && state !== 'select') reset();   // rematch, same balls
     if (state === 'select' && BALL_ORDER[+e.key - 1]) choose(BALL_ORDER[+e.key - 1]);
     if (state === 'select' && (e.key === '0' || e.key === ' ')) choose(RANDOM);
+    if (state === 'select' && (e.key === 'ArrowDown' || e.key === 'PageDown')) scrollBy(e.key === 'PageDown' ? 100 : 20);
+    if (state === 'select' && (e.key === 'ArrowUp' || e.key === 'PageUp')) scrollBy(e.key === 'PageUp' ? -100 : -20);
     if (state === 'select' && selectStep === 1 && (e.key === 'Escape' || e.key === 'Backspace')) selectStep = 0;
     if ((e.key === ' ' || e.key === 'Enter') && state === 'aim') launch();
   });
@@ -1123,7 +1215,7 @@
   }
 
   function strike(attacker, victim) {
-    const amount = dealt(attacker);
+    const amount = attacker.type.wcd ? wcdDamage(attacker, victim) : dealt(attacker);
     if (amount > 0 && hurt(victim, amount, attacker) > 0 && attacker.type.freeze && victim.alive) {
       if (victim.chill <= 0) popups.push({ x: victim.x, y: victim.y - victim.r - 12, text: 'CHILLED', t: -0.1, color: '#9fe3f5' });
       victim.chill = attacker.type.freeze.time;
@@ -1581,6 +1673,148 @@
   }
 
   // ---------------------------------------------------------------------------
+  // WCD: a 5x5 grid of numbers over the arena
+  // ---------------------------------------------------------------------------
+  function makeGrid(cfg) {
+    const cells = [];
+    for (let i = 0; i < cfg.size * cfg.size; i++) {
+      // skewed toward low numbers: squaring a random fraction piles values near the bottom
+      const n = cfg.min + Math.floor(Math.pow(Math.random(), 2.2) * (cfg.max - cfg.min + 1));
+      cells.push({ n, used: false });
+    }
+    // guarantee a few big ones
+    let high = cells.filter(c => c.n >= cfg.high).length;
+    while (high < cfg.minHigh) {
+      const c = cells[Math.floor(Math.random() * cells.length)];
+      if (c.n >= cfg.high) continue;
+      c.n = randInt(cfg.high, cfg.max);
+      high++;
+    }
+    return { size: cfg.size, cells };
+  }
+
+  function cellAt(x, y) {
+    const cw = (PLAY.right - PLAY.left) / grid.size, ch = (PLAY.bottom - PLAY.top) / grid.size;
+    const cx = Math.max(0, Math.min(grid.size - 1, Math.floor((x - PLAY.left) / cw)));
+    const cy = Math.max(0, Math.min(grid.size - 1, Math.floor((y - PLAY.top) / ch)));
+    return grid.cells[cy * grid.size + cx];
+  }
+
+  // The WCD Ball hits for the number of the box the victim is in, then crosses it off.
+  function wcdDamage(w, victim) {
+    if (!grid || w.stunned) return w.type.damage;
+    const c = cellAt(victim.x, victim.y);
+    if (c.used) return w.type.damage;
+    c.used = true;
+    popups.push({ x: victim.x, y: victim.y - victim.r - 12, text: 'BOX ' + c.n + '!', t: -0.1, color: c.n >= w.type.wcd.high ? '#ff5a3d' : '#ffd23f' });
+    if (grid.cells.every(cc => cc.used)) grid = makeGrid(w.type.wcd);   // card full: deal a new one
+    return c.n;
+  }
+
+  function drawGrid() {
+    if (!grid) return;
+    const cw = (PLAY.right - PLAY.left) / grid.size, ch = (PLAY.bottom - PLAY.top) / grid.size;
+    ctx.fillStyle = '#ffffff';
+    ctx.globalAlpha = 0.28;
+    for (let i = 1; i < grid.size; i++) {
+      ctx.fillRect(Math.round(PLAY.left + i * cw), PLAY.top, 1, PLAY.bottom - PLAY.top);
+      ctx.fillRect(PLAY.left, Math.round(PLAY.top + i * ch), PLAY.right - PLAY.left, 1);
+    }
+    grid.cells.forEach((c, i) => {
+      const x = PLAY.left + (i % grid.size) * cw + cw / 2, y = PLAY.top + Math.floor(i / grid.size) * ch + ch / 2;
+      if (c.used) {
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = '#ff4f6d';
+        pixLine(x - 6, y - 6, x + 6, y + 6); pixLine(x - 6, y + 6, x + 6, y - 6);
+      } else {
+        ctx.globalAlpha = c.n >= 50 ? 0.75 : 0.45;
+        drawTextCentered(c.n, x + 0.5, Math.round(y) - 2, c.n >= 50 ? '#ff8a6a' : '#ffffff', 1, null);
+      }
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Gunslinger: aim, shoot a bouncing bullet, reload
+  // ---------------------------------------------------------------------------
+  function updateGun(b, dt) {
+    const cfg = b.type.gun;
+    if (!cfg || !b.alive) return;
+    b.muzzle = Math.max(0, b.muzzle - dt);
+    const foe = foeOf(b);
+    if (!foe) return;
+    const want = Math.atan2(foe.y - b.y, foe.x - b.x);
+    const d = angleDiff(b.gunAng, want);
+    b.gunAng += Math.sign(d) * Math.min(Math.abs(d), cfg.turnRate * dt);
+    b.reload -= dt;
+    if (b.reload > 0 || Math.abs(angleDiff(b.gunAng, want)) > 0.25 || b.stunned) return;
+    b.reload = cfg.reload;
+    b.muzzle = 0.08;
+    const mx = b.x + Math.cos(b.gunAng) * (b.r + 9), my = b.y + Math.sin(b.gunAng) * (b.r + 9);
+    bullets.push({ owner: b, x: mx, y: my, vx: Math.cos(b.gunAng) * cfg.bulletSpeed, vy: Math.sin(b.gunAng) * cfg.bulletSpeed, bounces: cfg.bounces, t: 0 });
+  }
+
+  function updateBullets(dt) {
+    for (const bu of bullets) {
+      bu.t += dt;
+      if (bu.t > 3) { bu.done = true; continue; }
+      bu.px = bu.x; bu.py = bu.y;
+      bu.x += bu.vx * dt; bu.y += bu.vy * dt;
+      // walls: bounce once, then the bullet is spent
+      let wall = false;
+      if (bu.x < PLAY.left) { bu.x = PLAY.left; bu.vx = Math.abs(bu.vx); wall = true; }
+      if (bu.x > PLAY.right) { bu.x = PLAY.right; bu.vx = -Math.abs(bu.vx); wall = true; }
+      if (bu.y < PLAY.top) { bu.y = PLAY.top; bu.vy = Math.abs(bu.vy); wall = true; }
+      if (bu.y > PLAY.bottom) { bu.y = PLAY.bottom; bu.vy = -Math.abs(bu.vy); wall = true; }
+      if (wall) {
+        burst(bu.x, bu.y, { light: '#ffffff', base: '#ffe14d', dark: '#b5803f' }, 3);
+        if (bu.bounces-- <= 0) { bu.done = true; continue; }
+      }
+      for (const o of balls) {
+        if (!o.alive || o.phased || o.side === bu.owner.side) continue;
+        if (distToSegment(o.x, o.y, bu.px, bu.py, bu.x, bu.y) > o.r + 1) continue;
+        hurt(o, bu.owner.type.gun.damage, bu.owner, '#ffe14d');
+        burst(bu.x, bu.y, { light: '#ffffff', base: '#ffe14d', dark: '#ff8a3d' }, 6);
+        bu.done = true;
+        break;
+      }
+    }
+    bullets = bullets.filter(bu => !bu.done);
+  }
+
+  // The revolver, pointed where the Gunslinger is aiming.
+  function drawGun(x, y, r, ang, flash) {
+    const c = Math.cos(ang), s2 = Math.sin(ang);
+    const px = -s2, py = c;
+    // grip, angled back a bit
+    ctx.fillStyle = '#5a3418';
+    pixLine(x + c * (r - 1) + px * 1, y + s2 * (r - 1) + py * 1, x + c * (r - 3) + px * 4, y + s2 * (r - 3) + py * 4);
+    pixLine(x + c * r + px * 1, y + s2 * r + py * 1, x + c * (r - 2) + px * 4, y + s2 * (r - 2) + py * 4);
+    // cylinder and barrel
+    ctx.fillStyle = '#1b1f25';
+    pixLine(x + c * (r - 1) - px, y + s2 * (r - 1) - py, x + c * (r + 9) - px, y + s2 * (r + 9) - py);
+    ctx.fillStyle = '#9aa1ab';
+    pixLine(x + c * (r - 1), y + s2 * (r - 1), x + c * (r + 9), y + s2 * (r + 9));
+    ctx.fillStyle = '#e4e8ee';
+    ctx.fillRect(Math.round(x + c * (r + 2)), Math.round(y + s2 * (r + 2)), 2, 2);
+    if (flash > 0) {
+      const fx = x + c * (r + 11), fy = y + s2 * (r + 11);
+      ctx.fillStyle = '#fff3b0'; ctx.fillRect(Math.round(fx) - 2, Math.round(fy) - 2, 5, 5);
+      ctx.fillStyle = '#ff8a3d'; ctx.fillRect(Math.round(fx) - 1, Math.round(fy) - 1, 3, 3);
+    }
+  }
+
+  function drawBullets() {
+    for (const bu of bullets) {
+      const sp = Math.hypot(bu.vx, bu.vy) || 1;
+      ctx.fillStyle = '#b5803f';
+      pixLine(bu.x - bu.vx / sp * 5, bu.y - bu.vy / sp * 5, bu.x, bu.y);
+      ctx.fillStyle = '#ffe14d';
+      ctx.fillRect(Math.round(bu.x) - 1, Math.round(bu.y) - 1, 2, 2);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Magnet: pull, then blast
   // ---------------------------------------------------------------------------
   function updateMagnet(b, dt) {
@@ -1965,6 +2199,7 @@
         updateHealer(b, dt);
         updateMagnet(b, dt);
         updateBalloon(b, dt);
+        updateGun(b, dt);
         b.chill = Math.max(0, b.chill - dt);
       }
       for (const sp of spikes) sp.t += dt;
@@ -1972,6 +2207,7 @@
       updateChains(dt);
       updateHeals(dt);
       updateShards(dt);
+      updateBullets(dt);
       for (let i = 0; i < balls.length; i++)
         for (let j = i + 1; j < balls.length; j++) {
           const a = balls[i], b = balls[j];
@@ -2516,6 +2752,7 @@
   }
 
   function drawWeapon(b) {
+    if (b.type.gun && b.alive) drawGun(b.x, b.y, b.r, b.gunAng, b.muzzle);
     if (b.type.cap && b.alive) drawFuse(b.x, b.y, b.r, b.fuse);
     if (b.type.zap && b.alive && b.zapT < 0.6) {
       // crackling sparks while the next strike charges
@@ -2633,6 +2870,7 @@
     const iconFace = alignRight ? Math.PI : 0;
     if (t.fangs) drawFangs(ix + t.radius, 16 + t.radius, t.radius, iconFace, false);
     if (t.cap) drawFuse(ix + t.radius, 16 + t.radius, t.radius, 9);
+    if (t.gun) drawGun(ix + t.radius, 16 + t.radius, t.radius, alignRight ? Math.PI : 0, 0);
     ctx.drawImage(t.sprite, ix, 16);
     if (t.fangs) drawVampEyes(ix + t.radius, 16 + t.radius, t.radius, iconFace);
     // hp bar
@@ -2680,6 +2918,8 @@
       const n = balls.filter(b => b.side === ball.side && b.alive).length;
       info.push(['SLIMES ' + n + '  SPLIT ' + (ball.gen < t.slime.splitBelow.length ? 'UNDER ' + t.slime.splitBelow[ball.gen] : 'DONE'), '#c6f9a8']);
     }
+    if (t.gun) info.push(ball.reload > 0 ? ['RELOADING ' + ball.reload.toFixed(1) + 'S', '#e8c48a'] : ['LOADED', '#ffe14d']);
+    if (t.wcd && grid) info.push(['BOXES LEFT ' + grid.cells.filter(c => !c.used).length + '/25', '#9fc4ff']);
     if (t.magnet) info.push(ball.pulling ? ['PULLING - BLAST IN ' + Math.max(0, ball.magT).toFixed(1) + 'S', '#7fb2ff'] : ['PULL IN ' + Math.max(0, ball.magT).toFixed(1) + 'S', '#ff7a7a']);
     if (t.glass) info.push(['SHARDS ' + shards.filter(sh => sh.owner === ball).length + '/' + t.glass.max, '#bfeeff']);
     if (t.balloon) info.push(['SIZE ' + Math.round(ball.inflate * 100) + '%  HIT ' + baseDamagePreview(ball), '#ff8a95']);
@@ -2766,6 +3006,8 @@
 
   // One short line describing a ball's special, for its card.
   function abilityText(t) {
+    if (t.gun) return ['GUN ' + t.gun.damage, '#ffe14d'];
+    if (t.wcd) return ['BOX 1-75', '#9fc4ff'];
     if (t.magnet) return ['PULL+BLAST', '#7fb2ff'];
     if (t.glass) return ['BLEED ' + t.glass.bleedDamage, '#ff4f6d'];
     if (t.balloon) return ['INFLATES', '#ff8a95'];
@@ -2808,7 +3050,10 @@
       drawTextCentered('CHOOSE BALL 2', W / 2, 18, SIDES[1].color, 1);
       drawTextCentered('BALL 1: ' + BALL_TYPES[picks[0]].short + '   ESC: BACK', W / 2, 26, '#9fb6dc', 1);
     }
+    ctx.save();
+    ctx.beginPath(); ctx.rect(6, CARD_VIEW.top, W - 12, CARD_VIEW.bottom - CARD_VIEW.top); ctx.clip();
     cardRects().forEach((c, i) => {
+      if (c.y + c.h < CARD_VIEW.top - 2 || c.y > CARD_VIEW.bottom + 2) return;   // off screen
       const t = BALL_TYPES[c.key];
       const hot = i === hoverCard;
       const mine = selectStep === 1 && c.key === picks[0];   // your ball, for reference
@@ -2854,6 +3099,7 @@
       if (t.studs) drawStuds(cx, cy, rr, hot ? performance.now() / 300 : 0);
       if (t.fangs) drawFangs(cx, cy, rr, 0, hot);
       if (t.cap) drawFuse(cx, cy, rr, hot ? 0.5 : 9);
+      if (t.gun) drawGun(cx, cy, rr, -0.5, hot && Math.floor(performance.now() / 150) % 3 === 0 ? 1 : 0);
       ctx.drawImage(t.sprite, Math.round(cx - rr), Math.round(cy - rr), Math.round(t.sprite.width * k), Math.round(t.sprite.height * k));
       if (t.fangs) drawVampEyes(cx, cy, rr, 0);
       ctx.restore();
@@ -2881,6 +3127,16 @@
         if (abilityTxt) drawText(abilityTxt, tx, ty + 24, abilityCol);
       }
     });
+    ctx.restore();
+    // scrollbar, when the list is taller than the window
+    if (maxScroll() > 0) {
+      const trackTop = CARD_VIEW.top, trackH = CARD_VIEW.bottom - CARD_VIEW.top;
+      const thumbH = Math.max(12, Math.round(trackH * trackH / cardsHeight()));
+      const thumbY = trackTop + Math.round((trackH - thumbH) * scrollY / maxScroll());
+      ctx.fillStyle = '#1b2a45'; ctx.fillRect(W - 9, trackTop, 2, trackH);
+      ctx.fillStyle = '#9fb6dc'; ctx.fillRect(W - 9, thumbY, 2, thumbH);
+      if (scrollY < maxScroll() && Math.floor(performance.now() / 400) % 2) drawTextCentered('SCROLL FOR MORE', W / 2, H - 6, '#9fb6dc', 1);
+    }
   }
 
   function render() {
@@ -2898,6 +3154,7 @@
     ctx.beginPath();
     ctx.rect(PLAY.left, PLAY.top, PLAY.right - PLAY.left, PLAY.bottom - PLAY.top);
     ctx.clip();
+    if (state !== 'select') drawGrid();
     if (state === 'aim') for (const b of balls) drawAimArrow(b);
     if (state !== 'select') {
       drawWebs();
@@ -2906,6 +3163,7 @@
       drawChains();
       drawHeals();
       drawShards();
+      drawBullets();
       for (const b of balls) { drawMagnetField(b); drawString(b); }
       for (const b of balls) drawWeapon(b);
       for (const b of balls) drawBallWithFlash(b);

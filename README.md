@@ -2,7 +2,8 @@
 
 A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a browser.
 
-- Pick ball 1, then ball 2 (click a card or press its number; Random is key 0). Esc goes back.
+- Pick ball 1, then ball 2 (click a card or press its number; Random is key 0). Esc goes back. Scroll the list with
+  the mouse wheel, by dragging it, or with the arrow keys.
 - Aim both balls by dragging on them: drag the way you want it to go, and farther for a harder launch. Then click
   LAUNCH (or press Space). Click either side panel before launching to change that ball.
 - Balls bounce around the square arena. Every contact is one tick of each ball's damage stat.
@@ -33,6 +34,8 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | Magnet Ball | 100 | 7, blast 6 |
 | Glass Ball | 60 | 8, bleed 3 |
 | Balloon Ball | 35 (up to 90) | 4 (up to 12) |
+| Gunslinger Ball | 100 | 4, bullets 7 |
+| WCD Ball | 120 | the box number (1–75), or 5 |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
 When two axes meet they clang off each other and both reverse direction.
@@ -96,3 +99,11 @@ Ball, costs it 3 HP.
 The Balloon Ball starts small with 35 HP and 4 damage. Over 7 seconds it inflates: it gets bigger, hits harder (up to 12),
 and gains HP (up to 90 max HP), but it gets slower and takes up to 50% more damage. When it's full it pops, dealing 10
 damage to anything close, and shrinks back down to start again.
+
+The Gunslinger Ball is fast and keeps its revolver pointed at the enemy. It fires a fast bullet (7 damage) that can bounce
+off one wall, then has to reload for 1.1 seconds.
+
+The WCD Ball lays a 5x5 grid over the arena. Each box has a random number from 1 to 75. Low numbers are much more
+likely, but there are always at least 2 numbers of 50 or more. When the WCD Ball hits the enemy, the enemy takes the
+number of the box it's in, and that box is crossed off. Hits in crossed-off boxes only do 5. When every box is crossed
+off, a new grid is dealt.
