@@ -334,6 +334,56 @@
       // from it; if the enemy grabs it, it hurts them instead.
       healer: { everyMin: 2.5, everyMax: 4, heal: 12, damage: 8, max: 3, life: 10 },
     },
+    magnet: {
+      name: 'MAGNET BALL',
+      short: 'MAGNET',
+      hp: 100,
+      damage: 7,
+      mass: 1,
+      radius: 12,
+      speed: 130,
+      colors: { light: '#9aa1ab', base: '#5f6670', dark: '#3d434c', rim: '#1b1f25' },
+      horseshoe: true,   // red horseshoe magnet with silver tips
+      // It pulls nearby enemies in, then lets off a blast that throws them away.
+      magnet: { pullTime: 2, rest: 2, range: 120, pull: 320, blastRadius: 60, blastDamage: 6, knock: 300 },
+    },
+    glass: {
+      name: 'GLASS BALL',
+      short: 'GLASS',
+      hp: 60,
+      damage: 8,
+      mass: 1,
+      radius: 12,
+      speed: 175,        // fast...
+      colors: { light: '#ffffff', base: '#bfeeff', dark: '#7cc6e6', rim: '#3a7fa0' },
+      glint: true,
+      // ...but fragile. Every time it's hurt, sharp shards scatter around it. An enemy
+      // that touches a shard bleeds: for a while, every wall it hits (or every time it
+      // hits the Glass Ball) costs it 3 HP.
+      glass: { shardsPerHit: 2, max: 8, life: 10, bleedTime: 5, bleedDamage: 3 },
+    },
+    balloon: {
+      name: 'BALLOON BALL',
+      short: 'BALLOON',
+      hp: 35,
+      damage: 4,
+      mass: 1,
+      radius: 12,        // sprite size; the real size changes as it inflates
+      speed: 150,
+      colors: { light: '#ff8a95', base: '#e8394a', dark: '#a8182a', rim: '#5a0a14' },
+      knot: true,
+      // It keeps inflating: bigger, harder-hitting and tougher (more HP), but slower and
+      // squishier (takes more damage). When it's full it pops back down and starts again.
+      balloon: {
+        fillTime: 7,          // seconds from small to full
+        radius: [8, 20],      // [small, full]
+        damage: [4, 12],
+        hp: [35, 90],         // max HP
+        speed: [150, 80],
+        taken: [1, 1.5],      // damage taken multiplier
+        popDamage: 10, popRadius: 40,
+      },
+    },
   };
   const BALL_ORDER = Object.keys(BALL_TYPES);
 
@@ -516,6 +566,32 @@
           g.fillRect(x - 1, y, 2, 1);
         }
       }
+    }
+    if (type.horseshoe) {
+      // a U-shaped magnet, red with silver tips, opening upward
+      for (let py = 0; py < d; py++) for (let px = 0; px < d; px++) {
+        const dx = px - r, dy = py - (r - 1);
+        const ring = Math.hypot(dx, dy);
+        const bottom = dy >= 0 && ring >= 4 && ring <= 8;
+        const leg = dy < 0 && dy >= -8 && Math.abs(dx) >= 4 && Math.abs(dx) <= 8;
+        if (!bottom && !leg) continue;
+        const tip = dy <= -5;
+        const edge = (bottom && (ring < 4.8 || ring > 7.2)) || (leg && (Math.abs(dx) < 4.8 || Math.abs(dx) > 7.2));
+        g.fillStyle = tip ? (edge ? '#8a929e' : '#e4e8ee') : (edge ? '#7a1020' : (dx < 0 ? '#ff5a5a' : '#d62a3a'));
+        g.fillRect(px, py, 1, 1);
+      }
+    }
+    if (type.glint) {
+      // light catching the glass
+      g.fillStyle = '#ffffff';
+      for (let k = 0; k < 6; k++) { g.fillRect(r - 7 + k, r - 2 - k, 1, 1); g.fillRect(r - 5 + k, r + 1 - k, 1, 1); }
+      g.fillRect(r + 5, r + 5, 2, 1);
+    }
+    if (type.knot) {
+      // shine and a little knot at the bottom
+      g.fillStyle = '#ffd0d6'; g.fillRect(r - 6, r - 7, 3, 4); g.fillRect(r - 7, r - 5, 1, 2);
+      g.fillStyle = '#a8182a'; g.fillRect(r - 1, d - 3, 3, 2);
+      g.fillStyle = '#5a0a14'; g.fillRect(r, d - 1, 1, 1);
     }
     if (type.goo) {
       // bubbles floating in the jelly
@@ -724,6 +800,7 @@
   let miniBombs = [];
   let chains = [];   // {owner, ax, ay, target, t, len}
   let heals = [];    // heal pickups dropped by the Healer Ball
+  let shards = [];   // glass shards
   const picks = ['normal', 'normal'];   // ball type for YOU and CPU
   let hoverCard = -1;
 
@@ -759,11 +836,16 @@
       shockT: t.shocker ? t.shocker.every : 0, charged: 0, stunned: false,
       // chained
       chainCd: 0, chainT: 0,
+      // magnet / glass / balloon / bleeding
+      magT: t.magnet ? t.magnet.rest : 0, pulling: false,
+      bleed: 0, bleedSrc: null, bleedCd: 0,
+      inflate: 0,
       // slime / healer
       gen: 0,
       healT: t.healer ? t.healer.everyMin : 0,
     };
     if (t.rng) rollRng(ball);   // the first roll starts at launch
+    if (t.balloon) applyBalloon(ball);
     return ball;
   }
 
@@ -782,6 +864,10 @@
   function sideBall(side) {
     return balls.find(b => b.side === side && b.alive) || balls.find(b => b.side === side);
   }
+
+  // Cruising speed of a ball (a balloon slows down as it inflates).
+  function ballSpeed(b) { return b.speed || b.type.speed; }
+  const lerp = (a, b, k) => a + (b - a) * k;
 
   function randInt(min, max) { return min + Math.floor(Math.random() * (max - min + 1)); }
 
@@ -851,6 +937,7 @@
     miniBombs = [];
     chains = [];
     heals = [];
+    shards = [];
     state = 'aim';      // select -> aim -> fight -> over
     winner = null;
     shake = 0;
@@ -876,8 +963,8 @@
       const dx = b.aimX - b.x, dy = b.aimY - b.y;
       const len = Math.hypot(dx, dy) || 1;
       const power = aimPower(b);
-      b.vx = dx / len * b.type.speed * power;
-      b.vy = dy / len * b.type.speed * power;
+      b.vx = dx / len * ballSpeed(b) * power;
+      b.vy = dy / len * ballSpeed(b) * power;
     }
     dragging = null;
     state = 'fight';
@@ -953,6 +1040,7 @@
       color = '#7fc8ff';
     }
     if (ball.type.slime) amount = Math.max(1, Math.round(amount * ball.type.slime.taken[ball.gen]));
+    if (ball.type.balloon) amount = Math.max(1, Math.round(amount * lerp(...ball.type.balloon.taken, ball.inflate)));
     if (!firstHitDone) {
       firstHitDone = true;
       popups.push({ x: attacker.x, y: attacker.y - attacker.r - 12, text: 'FIRST HIT!', t: -0.4, color: SIDES[attacker.side].color });
@@ -975,6 +1063,7 @@
       shake = 0.35;
       burst(ball.x, ball.y, { light: '#ffffff', base: '#d6a8ff', dark: '#7a3fc4' }, 30);
     }
+    if (ball.type.glass && ball.hp > 0) dropShards(ball);
     const sl = ball.type.slime;
     if (sl && ball.gen < sl.splitBelow.length && ball.hp < sl.splitBelow[ball.gen]) {
       splitSlime(ball);
@@ -995,7 +1084,7 @@
     if (ball.latch) ball.latch = null;
     burst(ball.x, ball.y, ball.type.colors, 18);
     popups.push({ x: ball.x, y: ball.y - ball.r - 12, text: 'SPLIT!', t: -0.1, color: '#c6f9a8' });
-    const sp = Math.hypot(ball.vx, ball.vy) || ball.type.speed;
+    const sp = Math.hypot(ball.vx, ball.vy) || ballSpeed(ball);
     const heading = Math.atan2(ball.vy, ball.vx) || Math.random() * Math.PI * 2;
     for (const k of [-1, 1]) {
       const a = heading + k * 0.9;
@@ -1023,6 +1112,7 @@
 
   function baseDamage(ball) {
     if (ball.type.slime) return ball.type.slime.damage[ball.gen];
+    if (ball.type.balloon) return Math.round(lerp(...ball.type.balloon.damage, ball.inflate));
     const range = ball.type.damageRange;
     if (range) return randInt(range[0], range[1]);
     if (!ball.type.rng) return ball.type.damage;
@@ -1138,6 +1228,10 @@
     const [first, second] = driveA >= driveB ? [a, b] : [b, a];
     strike(first, second);
     if (second.alive) strike(second, first);
+    // a bleeding ball that hits the Glass Ball reopens its cuts
+    for (const [g, o] of [[a, b], [b, a]]) {
+      if (g.type.glass && o.bleed > 0 && o.alive && g.alive) hurt(o, g.type.glass.bleedDamage, g, '#c0203a');
+    }
     a.squash = b.squash = 0.12;
     shake = 0.12;
     burst(hx, hy, { light: '#ffffff', base: '#ffe28a', dark: '#ffb347' }, 8);
@@ -1215,8 +1309,8 @@
   const SPEED_MIN = 0.55, SPEED_MAX = 2.0;
   function clampSpeed(ball) {
     const s = Math.hypot(ball.vx, ball.vy);
-    if (s === 0) { ball.vx = ball.type.speed * SPEED_MIN; return; }
-    const target = Math.max(ball.type.speed * SPEED_MIN, Math.min(ball.type.speed * SPEED_MAX, s));
+    if (s === 0) { ball.vx = ballSpeed(ball) * SPEED_MIN; return; }
+    const target = Math.max(ballSpeed(ball) * SPEED_MIN, Math.min(ballSpeed(ball) * SPEED_MAX, s));
     ball.vx = ball.vx / s * target;
     ball.vy = ball.vy / s * target;
   }
@@ -1224,7 +1318,7 @@
   // Very slowly ease a ball's speed back toward its cruising speed.
   function settleSpeed(ball, dt) {
     const s = Math.hypot(ball.vx, ball.vy) || 1;
-    const next = s + (ball.type.speed - s) * Math.min(1, 0.12 * dt);
+    const next = s + (ballSpeed(ball) - s) * Math.min(1, 0.12 * dt);
     ball.vx = ball.vx / s * next;
     ball.vy = ball.vy / s * next;
   }
@@ -1238,6 +1332,10 @@
     if (hit && ball.type.web) spiderTouchWall(ball, hit);
     if (hit && ball.type.spikes) growSpike(ball, hit);
     if (hit && ball.type.chains) chainWallHit(ball, hit);
+    if (hit && ball.bleed > 0 && ball.bleedCd <= 0 && ball.bleedSrc) {
+      ball.bleedCd = 0.2;
+      hurt(ball, ball.bleedSrc.type.glass.bleedDamage, ball.bleedSrc, '#c0203a');
+    }
     if (hit) {
       ball.squash = 0.08;
       // nudge the angle a little so balls don't get stuck in loops that never meet
@@ -1358,7 +1456,7 @@
   function detach(v) {
     const foe = v.latch.target;
     const dx = v.x - foe.x, dy = v.y - foe.y, l = Math.hypot(dx, dy) || 1;
-    v.vx = dx / l * v.type.speed; v.vy = dy / l * v.type.speed;
+    v.vx = dx / l * ballSpeed(v); v.vy = dy / l * ballSpeed(v);
     v.latch = null;
     v.latchCd = v.type.vampire.cooldown;
   }
@@ -1480,6 +1578,124 @@
       }
     }
     chains = chains.filter(c => !c.done && c.owner.alive);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Magnet: pull, then blast
+  // ---------------------------------------------------------------------------
+  function updateMagnet(b, dt) {
+    const cfg = b.type.magnet;
+    if (!cfg || !b.alive) return;
+    b.magT -= dt;
+    if (b.pulling) {
+      for (const o of balls) {
+        if (!o.alive || o.side === b.side || o.stuck > 0 || o.latch || o.phased) continue;
+        const dx = b.x - o.x, dy = b.y - o.y, d = Math.hypot(dx, dy) || 1;
+        if (d > cfg.range) continue;
+        o.vx += dx / d * cfg.pull * dt; o.vy += dy / d * cfg.pull * dt;
+        clampSpeed(o);
+      }
+      if (b.magT <= 0) {
+        // BLAST
+        b.pulling = false;
+        b.magT = cfg.rest;
+        effects.push({ kind: 'pulse', x: b.x, y: b.y, r: cfg.blastRadius, t: 0, life: 0.4 });
+        shake = Math.max(shake, 0.2);
+        for (const o of balls) {
+          if (!o.alive || o.side === b.side || o.phased) continue;
+          const dx = o.x - b.x, dy = o.y - b.y, d = Math.hypot(dx, dy) || 1;
+          if (d > cfg.blastRadius + o.r) continue;
+          if (hurt(o, cfg.blastDamage, b, '#7fb2ff') > 0 && o.stuck <= 0 && !o.latch) {
+            o.vx += dx / d * cfg.knock; o.vy += dy / d * cfg.knock;
+            clampSpeed(o);
+          }
+        }
+      }
+    } else if (b.magT <= 0) {
+      b.pulling = true;
+      b.magT = cfg.pullTime;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Glass: shards and bleeding
+  // ---------------------------------------------------------------------------
+  function dropShards(g) {
+    const cfg = g.type.glass;
+    for (let i = 0; i < cfg.shardsPerHit; i++) {
+      const a = Math.random() * Math.PI * 2, d = g.r + 8 + Math.random() * 22;
+      shards.push({
+        owner: g, t: 0, ang: Math.random() * Math.PI * 2,
+        x: Math.max(PLAY.left + 4, Math.min(PLAY.right - 4, g.x + Math.cos(a) * d)),
+        y: Math.max(PLAY.top + 4, Math.min(PLAY.bottom - 4, g.y + Math.sin(a) * d)),
+      });
+    }
+    while (shards.filter(sh => sh.owner === g).length > cfg.max) {
+      shards.splice(shards.findIndex(sh => sh.owner === g), 1);
+    }
+    burst(g.x, g.y, { light: '#ffffff', base: '#bfeeff', dark: '#7cc6e6' }, 8);
+  }
+
+  function updateShards(dt) {
+    for (const sh of shards) {
+      sh.t += dt;
+      const cfg = sh.owner.type.glass;
+      if (sh.t > cfg.life) { sh.done = true; continue; }
+      if (sh.t < 0.3) continue;
+      for (const b of balls) {
+        if (!b.alive || b.phased || b.side === sh.owner.side) continue;
+        if (Math.hypot(b.x - sh.x, b.y - sh.y) > b.r + 3) continue;
+        if (b.bleed <= 0) popups.push({ x: b.x, y: b.y - b.r - 12, text: 'BLEEDING!', t: -0.1, color: '#ff4f6d' });
+        b.bleed = cfg.bleedTime;
+        b.bleedSrc = sh.owner;
+        burst(sh.x, sh.y, { light: '#ffffff', base: '#ff8a9a', dark: '#c0203a' }, 6);
+        sh.done = true;
+        break;
+      }
+    }
+    shards = shards.filter(sh => !sh.done);
+    for (const b of balls) {
+      b.bleedCd = Math.max(0, b.bleedCd - dt);
+      if (b.bleed > 0) {
+        b.bleed = Math.max(0, b.bleed - dt);
+        if (b.alive && Math.random() < dt * 8) {
+          particles.push({ x: b.x + (Math.random() - 0.5) * b.r, y: b.y + b.r * 0.6, vx: 0, vy: 25, life: 0.4, t: 0, color: '#c0203a' });
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Balloon: inflate (bigger, stronger, more HP, slower, squishier), then pop
+  // ---------------------------------------------------------------------------
+  function applyBalloon(b) {
+    const cfg = b.type.balloon, k = b.inflate;
+    const newMax = Math.round(lerp(...cfg.hp, k));
+    // HP grows (or shrinks) along with max HP
+    b.hp = b.maxHp ? Math.max(b.hp > 0 ? 1 : 0, b.hp * newMax / b.maxHp) : newMax;
+    b.maxHp = newMax;
+    b.r = lerp(...cfg.radius, k);
+    b.speed = lerp(...cfg.speed, k);
+  }
+
+  function updateBalloon(b, dt) {
+    const cfg = b.type.balloon;
+    if (!cfg || !b.alive) return;
+    b.inflate = Math.min(1, b.inflate + dt / cfg.fillTime);
+    applyBalloon(b);
+    if (b.inflate >= 1) {
+      // POP: a burst that hurts anything close, then it's small again
+      popups.push({ x: b.x, y: b.y - b.r - 8, text: 'POP!', t: -0.1, color: '#ff8a95' });
+      effects.push({ kind: 'boom', x: b.x, y: b.y, r: cfg.popRadius, t: 0, life: 0.3 });
+      burst(b.x, b.y, b.type.colors, 20);
+      shake = Math.max(shake, 0.25);
+      for (const o of balls) {
+        if (!o.alive || o.side === b.side) continue;
+        if (Math.hypot(o.x - b.x, o.y - b.y) <= cfg.popRadius + o.r) hurt(o, cfg.popDamage, b, '#ff8a95');
+      }
+      b.inflate = 0;
+      applyBalloon(b);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1747,12 +1963,15 @@
         updateZap(b, dt);
         updateShocker(b, dt);
         updateHealer(b, dt);
+        updateMagnet(b, dt);
+        updateBalloon(b, dt);
         b.chill = Math.max(0, b.chill - dt);
       }
       for (const sp of spikes) sp.t += dt;
       updateMiniBombs(dt);
       updateChains(dt);
       updateHeals(dt);
+      updateShards(dt);
       for (let i = 0; i < balls.length; i++)
         for (let j = i + 1; j < balls.length; j++) {
           const a = balls[i], b = balls[j];
@@ -1979,6 +2198,17 @@
           ctx.fillStyle = i % 2 ? '#fff3b0' : '#ff5a1f';
           ctx.fillRect(Math.round(fx.x + Math.cos(a) * R), Math.round(fx.y + Math.sin(a) * R), 2, 2);
         }
+      } else if (fx.kind === 'pulse') {
+        // magnet blast: a double blue/red ring rushing outward
+        const R = fx.r * Math.min(1, k * 2.5);
+        ctx.globalAlpha = 1 - k;
+        for (let i = 0; i < 72; i++) {
+          const a = i / 72 * Math.PI * 2;
+          ctx.fillStyle = i % 2 ? '#7fb2ff' : '#ff5a5a';
+          ctx.fillRect(Math.round(fx.x + Math.cos(a) * R), Math.round(fx.y + Math.sin(a) * R), 2, 1);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(Math.round(fx.x + Math.cos(a) * R * 0.8), Math.round(fx.y + Math.sin(a) * R * 0.8), 1, 1);
+        }
       } else if (fx.kind === 'bolt') {
         ctx.globalAlpha = 1 - k;
         for (const [off, col] of [[1, '#6f8ff5'], [-1, '#6f8ff5'], [0, '#ffffff']]) {
@@ -2031,6 +2261,74 @@
           ctx.fillRect(Math.round(end.x + Math.cos(a) * (end.r + 1)), Math.round(end.y + Math.sin(a) * (end.r + 1)), 1, 1);
         }
       }
+    }
+  }
+
+  // Magnet field lines flowing inward while it pulls.
+  function drawMagnetField(b) {
+    if (!b.alive || !b.type.magnet || !b.pulling) return;
+    const R = b.type.magnet.range;
+    const now = performance.now() / 1000;
+    for (let i = 0; i < 16; i++) {
+      const a = i / 16 * Math.PI * 2;
+      const f = 1 - ((now * 0.9 + i * 0.37) % 1);   // moves from the edge toward the magnet
+      const rr = b.r + 3 + (R - b.r) * f;
+      ctx.globalAlpha = 0.25 + 0.6 * (1 - f);
+      ctx.fillStyle = i % 2 ? '#7fb2ff' : '#ff7a7a';
+      ctx.fillRect(Math.round(b.x + Math.cos(a) * rr), Math.round(b.y + Math.sin(a) * rr), 2, 2);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Glass shards: little glinting triangles.
+  function drawShards() {
+    for (const sh of shards) {
+      const left = sh.owner.type.glass.life - sh.t;
+      if (left < 2 && Math.floor(performance.now() / 100) % 2) continue;
+      const c = Math.cos(sh.ang), s2 = Math.sin(sh.ang);
+      const tri = {
+        x1: sh.x - c * 3 + s2 * 2, y1: sh.y - s2 * 3 - c * 2,
+        x2: sh.x - c * 3 - s2 * 2, y2: sh.y - s2 * 3 + c * 2,
+        px: sh.x + c * 4, py: sh.y + s2 * 4,
+      };
+      for (let y = Math.floor(sh.y - 5); y <= sh.y + 5; y++) for (let x = Math.floor(sh.x - 5); x <= sh.x + 5; x++) {
+        if (!insideTriangle(x + 0.5, y + 0.5, tri)) continue;
+        ctx.fillStyle = (x + y) % 3 === 0 ? '#ffffff' : '#bfeeff';
+        ctx.fillRect(x, y, 1, 1);
+      }
+      if (Math.floor(performance.now() / 300 + sh.ang * 3) % 5 === 0) {
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(sh.x + c * 4), Math.round(sh.y + s2 * 4) - 1, 1, 3);
+      }
+    }
+  }
+
+  // Cracks spreading over a damaged Glass Ball.
+  function drawCracks(b) {
+    if (!b.type.glass) return;
+    const n = Math.floor((1 - b.hp / b.maxHp) * 6);
+    ctx.fillStyle = '#3a7fa0';
+    for (let i = 0; i < n; i++) {
+      const a = i * 2.4 + 0.5;
+      const x1 = b.x + Math.cos(a) * 3, y1 = b.y + Math.sin(a) * 3;
+      const xm = b.x + Math.cos(a + 0.3) * (b.r * 0.6), ym = b.y + Math.sin(a + 0.3) * (b.r * 0.6);
+      const x2 = b.x + Math.cos(a - 0.1) * (b.r - 1), y2 = b.y + Math.sin(a - 0.1) * (b.r - 1);
+      pixLine(x1, y1, xm, ym); pixLine(xm, ym, x2, y2);
+    }
+  }
+
+  // Balloon string trailing behind it.
+  function drawString(b) {
+    if (!b.alive || !b.type.knot) return;
+    const sp = Math.hypot(b.vx, b.vy) || 1;
+    const ux = -b.vx / sp, uy = -b.vy / sp;   // trails opposite to its motion (straight down when still)
+    const bx = ux || 0, by = (sp > 1 ? uy : 1);
+    ctx.fillStyle = '#e4e8ee';
+    let px = b.x, py = b.y + b.r;
+    for (let i = 1; i <= 10; i++) {
+      const w = Math.sin(performance.now() / 150 + i) * 1.2;
+      const nx = b.x + bx * (b.r + i * 1.5) - by * w, ny = b.y + by * (b.r + i * 1.5) + bx * w;
+      pixLine(px, py, nx, ny);
+      px = nx; py = ny;
     }
   }
 
@@ -2271,6 +2569,7 @@
     ctx.fillRect(Math.round(b.x - b.r + 2), Math.round(b.y + b.r - 1), b.r * 2 - 2, 2);
     ctx.drawImage(spr, x, y, w, h);
     if (b.type.fangs) drawVampEyes(b.x, b.y, b.r, b.face);
+    drawCracks(b);
     // side marker ring dot
     ctx.fillStyle = SIDES[b.side].color;
     ctx.fillRect(Math.round(b.x) - 1, Math.round(b.y - b.r - 3), 3, 2);
@@ -2381,6 +2680,10 @@
       const n = balls.filter(b => b.side === ball.side && b.alive).length;
       info.push(['SLIMES ' + n + '  SPLIT ' + (ball.gen < t.slime.splitBelow.length ? 'UNDER ' + t.slime.splitBelow[ball.gen] : 'DONE'), '#c6f9a8']);
     }
+    if (t.magnet) info.push(ball.pulling ? ['PULLING - BLAST IN ' + Math.max(0, ball.magT).toFixed(1) + 'S', '#7fb2ff'] : ['PULL IN ' + Math.max(0, ball.magT).toFixed(1) + 'S', '#ff7a7a']);
+    if (t.glass) info.push(['SHARDS ' + shards.filter(sh => sh.owner === ball).length + '/' + t.glass.max, '#bfeeff']);
+    if (t.balloon) info.push(['SIZE ' + Math.round(ball.inflate * 100) + '%  HIT ' + baseDamagePreview(ball), '#ff8a95']);
+    if (ball.bleed > 0) info.push(['BLEEDING ' + ball.bleed.toFixed(1) + 'S', '#ff4f6d']);
     if (t.healer) info.push(['HEALS ' + heals.filter(h => h.owner === ball).length + '/' + t.healer.max, '#5ee07a']);
     if (t.chains) {
       const mine = chains.filter(c => c.owner === ball);
@@ -2426,7 +2729,7 @@
       line += 8;
     }
     const speed = ball.stuck > 0 ? 'STUNNED ' + ball.stuck.toFixed(1) + 'S'
-      : 'SPEED X' + (Math.hypot(ball.vx, ball.vy) / t.speed).toFixed(1);
+      : 'SPEED X' + (Math.hypot(ball.vx, ball.vy) / ballSpeed(ball)).toFixed(1);
     drawText(speed, alignRight ? x - textWidth(speed) : x, line, ball.stuck > 0 ? '#ffffff' : '#9fe6ff');
     if (state === 'aim') {
       const hint = 'CLICK TO CHANGE';
@@ -2459,8 +2762,13 @@
     }
   }
 
+  function baseDamagePreview(b) { return Math.round(lerp(...b.type.balloon.damage, b.inflate)); }
+
   // One short line describing a ball's special, for its card.
   function abilityText(t) {
+    if (t.magnet) return ['PULL+BLAST', '#7fb2ff'];
+    if (t.glass) return ['BLEED ' + t.glass.bleedDamage, '#ff4f6d'];
+    if (t.balloon) return ['INFLATES', '#ff8a95'];
     if (t.weapon) return ['AXE ' + t.weapon.damage, '#ffb03b'];
     if (t.web) return ['WEB DMG ' + t.web.damage, '#e6e9f2'];
     if (t.shield) return ['SHLD ' + Math.round(t.shield.reduction * 100) + '%', '#7fc8ff'];
@@ -2552,7 +2860,8 @@
       drawText(String(i + 1), c.x + 2, y + 2, hot ? '#ffd23f' : '#7f93b8');   // its number key
       // stats on the right
       const hit = t.rng ? t.rng.min + '-' + t.rng.max
-        : t.damageRange ? t.damageRange[0] + '-' + t.damageRange[1] : String(t.damage);
+        : t.damageRange ? t.damageRange[0] + '-' + t.damageRange[1]
+        : t.balloon ? t.balloon.damage[0] + '-' + t.balloon.damage[1] : String(t.damage);
       const [abilityTxt, abilityCol] = abilityText(t);
       if (compact) {
         // three lines: name / heart HP + sword damage / ability
@@ -2596,6 +2905,8 @@
       drawMiniBombs();
       drawChains();
       drawHeals();
+      drawShards();
+      for (const b of balls) { drawMagnetField(b); drawString(b); }
       for (const b of balls) drawWeapon(b);
       for (const b of balls) drawBallWithFlash(b);
       for (const b of balls) drawWrap(b);

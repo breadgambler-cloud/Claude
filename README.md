@@ -30,6 +30,9 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | Chained Ball | 100 | 8 |
 | Slime Ball | 90 (then 3, then 10) | 7 (then 5, then 2.5) |
 | Healer Ball | 100 | 6, enemy grabbing a heal takes 8 |
+| Magnet Ball | 100 | 7, blast 6 |
+| Glass Ball | 60 | 8, bleed 3 |
+| Balloon Ball | 35 (up to 90) | 4 (up to 12) |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
 When two axes meet they clang off each other and both reverse direction.
@@ -82,3 +85,14 @@ slimes with 3 HP each. Any hit on one of those pops it into two tiny slimes with
 
 The Healer Ball drops a heal at a random spot every 2.5–4 seconds (up to 3 at a time, each lasting 10 seconds). If the
 Healer Ball picks it up, it heals 12 HP. If the enemy touches it, the enemy takes 8 damage instead.
+
+The Magnet Ball pulls nearby enemies toward it for 2 seconds, then lets off a blast that deals 6 damage and throws them
+away. Then it rests for 2 seconds and does it again.
+
+The Glass Ball is fast but has only 60 HP. Every time it's hurt, two sharp shards scatter around it (up to 8, each lasting
+10 seconds). An enemy that touches a shard bleeds for 5 seconds: every wall it hits, and every time it hits the Glass
+Ball, costs it 3 HP.
+
+The Balloon Ball starts small with 35 HP and 4 damage. Over 7 seconds it inflates: it gets bigger, hits harder (up to 12),
+and gains HP (up to 90 max HP), but it gets slower and takes up to 50% more damage. When it's full it pops, dealing 10
+damage to anything close, and shrinks back down to start again.
