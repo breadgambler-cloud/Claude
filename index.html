@@ -318,7 +318,7 @@
     U:'101101101101111',V:'101101101101010',W:'101101111111101',X:'101101010101101',
     Y:'101101010010010',Z:'111001010100111',
     '-':'000000111000000','!':'010010010000010','.':'000000000000010','+':'000010111010000',
-    ':':'000010000010000','<':'001010100010001','%':'101001010100101','/':'001001010100100',' ':'000000000000000',
+    ':':'000010000010000','<':'001010100010001','?':'111001011000010','%':'101001010100101','/':'001001010100100',' ':'000000000000000',
   };
 
   function textWidth(str, s = 1) { return str.length * 4 * s - s; }
@@ -717,28 +717,45 @@
 
   function randInt(min, max) { return min + Math.floor(Math.random() * (max - min + 1)); }
 
-  // Pick screen: the player chooses, then the CPU picks at random.
-  function startSelect() {
+  // Pick screen, in two steps: first your ball, then the CPU's ball (or random).
+  const RANDOM = 'random';
+  let selectStep = 0;       // 0 = picking yours, 1 = picking the CPU's
+  let cpuRandom = true;     // was the CPU's ball left to chance?
+
+  function startSelect(step = 0) {
     state = 'select';
+    selectStep = step;
     popups = [];
     particles = [];
     shake = 0;
   }
 
   function choose(key) {
-    picks[0] = key;
-    picks[1] = BALL_ORDER[Math.floor(Math.random() * BALL_ORDER.length)];
+    if (selectStep === 0) {
+      picks[0] = key;
+      selectStep = 1;
+      hoverCard = -1;
+      return;
+    }
+    cpuRandom = key === RANDOM;
+    picks[1] = cpuRandom ? BALL_ORDER[Math.floor(Math.random() * BALL_ORDER.length)] : key;
     reset();
+  }
+
+  // What's on the pick screen right now: every ball, plus a random card for the CPU step.
+  function selectKeys() {
+    return selectStep === 1 ? [...BALL_ORDER, RANDOM] : BALL_ORDER;
   }
 
   // Card rectangles on the pick screen: a two-column grid inside the arena.
   function cardRects() {
     const cols = 4, gap = 3, w = 70;
     const y0 = 34;
-    const n = BALL_ORDER.length;
+    const keys = selectKeys();
+    const n = keys.length;
     const rows = Math.ceil(n / cols);
     const h = Math.min(40, Math.floor((H - 9 - y0 - (rows - 1) * gap) / rows));
-    return BALL_ORDER.map((key, i) => {
+    return keys.map((key, i) => {
       // each row is centered, so a short last row sits in the middle
       const row = Math.floor(i / cols);
       const inRow = Math.min(cols, n - row * cols);
@@ -816,10 +833,11 @@
     const p = toGame(e);
     if (state === 'select') {
       const i = cardAt(p);
-      if (i >= 0) choose(BALL_ORDER[i]);
+      if (i >= 0) choose(selectKeys()[i]);
     } else if (state === 'aim') {
-      // clicking your own panel goes back to the pick screen
-      if (p.x < ARENA.x - 2 && p.y < 102) startSelect();
+      // clicking a side panel goes back to that side's pick
+      if (p.x < ARENA.x - 2 && p.y < 102) startSelect(0);
+      else if (p.x > ARENA.x + ARENA.size + 2 && p.y < 102) startSelect(1);
       else { aim = p; launch(); }
     } else if (state === 'over' && roundTimer > 1.2) {
       startSelect();
@@ -828,6 +846,8 @@
   addEventListener('keydown', e => {
     if ((e.key === 'r' || e.key === 'R') && state !== 'select') reset();   // rematch, same balls
     if (state === 'select' && BALL_ORDER[+e.key - 1]) choose(BALL_ORDER[+e.key - 1]);
+    if (state === 'select' && selectStep === 1 && (e.key === '0' || e.key === ' ')) choose(RANDOM);
+    if (state === 'select' && selectStep === 1 && (e.key === 'Escape' || e.key === 'Backspace')) selectStep = 0;
     if ((e.key === ' ' || e.key === 'Enter') && state === 'aim') launch();
   });
 
@@ -2205,7 +2225,7 @@
       : 'SPEED X' + (Math.hypot(ball.vx, ball.vy) / t.speed).toFixed(1);
     drawText(speed, alignRight ? x - textWidth(speed) : x, line, ball.stuck > 0 ? '#ffffff' : '#9fe6ff');
     if (state === 'aim') {
-      const hint = alignRight ? 'RANDOM PICK' : 'CLICK TO CHANGE';
+      const hint = alignRight && cpuRandom ? 'RANDOM - CLICK' : 'CLICK TO CHANGE';
       drawText(hint, alignRight ? x - textWidth(hint) : x, 94, '#9fb6dc');
     }
   }
@@ -2241,11 +2261,17 @@
     ctx.fillRect(6, 12, W - 12, H - 18);
     ctx.fillStyle = '#30487a';
     ctx.fillRect(6, 12, W - 12, 1); ctx.fillRect(6, H - 7, W - 12, 1);
-    drawTextCentered('CHOOSE YOUR BALL', W / 2, 18, '#ffffff', 1);
-    drawTextCentered('THE CPU PICKS AT RANDOM', W / 2, 26, '#9fb6dc', 1);
+    if (selectStep === 0) {
+      drawTextCentered('CHOOSE YOUR BALL', W / 2, 18, SIDES[0].color, 1);
+      drawTextCentered('THEN PICK THE CPU BALL', W / 2, 26, '#9fb6dc', 1);
+    } else {
+      drawTextCentered('CHOOSE THE CPU BALL', W / 2, 18, SIDES[1].color, 1);
+      drawTextCentered('YOU: ' + BALL_TYPES[picks[0]].short + '   ESC: BACK', W / 2, 26, '#9fb6dc', 1);
+    }
     cardRects().forEach((c, i) => {
       const t = BALL_TYPES[c.key];
       const hot = i === hoverCard;
+      const mine = selectStep === 1 && c.key === picks[0];   // your ball, for reference
       const lift = hot ? -2 : 0;
       const y = c.y + lift;
       // card body
@@ -2256,6 +2282,20 @@
         ctx.fillStyle = '#ffd23f';
         ctx.fillRect(c.x - 1, y - 1, c.w + 2, 1); ctx.fillRect(c.x - 1, y + c.h, c.w + 2, 1);
         ctx.fillRect(c.x - 1, y - 1, 1, c.h + 2); ctx.fillRect(c.x + c.w, y - 1, 1, c.h + 2);
+      }
+      if (mine && !hot) {
+        ctx.fillStyle = SIDES[0].color;
+        ctx.fillRect(c.x - 1, y - 1, c.w + 2, 1); ctx.fillRect(c.x - 1, y + c.h, c.w + 2, 1);
+        ctx.fillRect(c.x - 1, y - 1, 1, c.h + 2); ctx.fillRect(c.x + c.w, y - 1, 1, c.h + 2);
+      }
+      if (c.key === RANDOM) {
+        // a big question mark with a dice-ish wobble when hovered
+        const wob = hot ? Math.round(Math.sin(performance.now() / 90) * 1.5) : 0;
+        drawText('?', c.x + 10 + wob, y + Math.floor(c.h / 2) - 8, '#ffd23f', 3);
+        drawText('RANDOM', c.x + 33, y + 5, '#ffffff');
+        drawText('ANY BALL', c.x + 33, y + 13, '#9fb6dc');
+        drawText('KEY 0', c.x + 33, y + 21, hot ? '#ffd23f' : '#7f93b8');
+        return;
       }
       // ball (with weapon) on the left
       const cx = c.x + 16, cy = y + Math.floor(c.h / 2);

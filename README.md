@@ -2,7 +2,8 @@
 
 A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a browser.
 
-- Pick your ball (click a card or press its number). The CPU picks a random ball.
+- Pick your ball (click a card or press its number), then pick the CPU's ball, or Random (key 0). Esc goes back.
+- Before launching, click either side panel to change that side's ball.
 - Aim with the mouse and click (or press Space) to launch. The farther the cursor is from your ball, the harder the launch.
 - Balls bounce around the square arena. Every contact is one tick of each ball's damage stat.
 - Collisions use momentum, so speeds change after impacts. Faster balls ricochet into each other more often.
