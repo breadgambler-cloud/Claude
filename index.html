@@ -303,7 +303,7 @@
     slime: {
       name: 'SLIME BALL',
       short: 'SLIME',
-      hp: 100,
+      hp: 75,
       damage: 7,
       mass: 1,
       radius: 12,
@@ -313,10 +313,11 @@
       // Hurt it enough and it splits in two, and the halves split again.
       // Generation 0 is the big slime; each split makes two of the next generation.
       slime: {
-        splitBelow: [30, 5],   // a gen-0 slime splits under 30 HP, a gen-1 slime under 5 HP
-        hp: [100, 15, 3],      // HP of each generation
+        splitBelow: [25, 8],   // a gen-0 slime splits under 25 HP, a gen-1 slime under 8 HP
+        hp: [75, 25, 10],      // HP of each generation
         radius: [12, 9, 6],
-        damage: [7, 5, 3],
+        damage: [7, 5, 1],
+        taken: [1.5, 1, 0.25], // damage taken: the big one is squishy (+50%), the little ones are tough (-75%)
       },
     },
     healer: {
@@ -929,6 +930,7 @@
       amount = Math.max(1, Math.round(amount * (1 - ball.type.shield.reduction)));
       color = '#7fc8ff';
     }
+    if (ball.type.slime) amount = Math.max(1, Math.round(amount * ball.type.slime.taken[ball.gen]));
     if (!firstHitDone) {
       firstHitDone = true;
       popups.push({ x: attacker.x, y: attacker.y - attacker.r - 12, text: 'FIRST HIT!', t: -0.4, color: SIDES[attacker.side].color });

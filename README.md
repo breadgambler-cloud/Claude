@@ -28,7 +28,7 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | Ice Ball | 100 | 7 |
 | Shocker Ball | 100 | 6, shock 4 |
 | Chained Ball | 100 | 8 |
-| Slime Ball | 100 (then 15, then 3) | 7 (then 5, then 3) |
+| Slime Ball | 75 (then 25, then 10) | 7 (then 5, then 1) |
 | Healer Ball | 100 | 6, enemy grabbing a heal takes 8 |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
@@ -76,8 +76,9 @@ Every wall the Chained Ball hits gives it a chain anchored to that spot (up to 3
 enemy locks one held chain onto them, reeling them toward that wall. A chained ball can't move farther from the anchor
 than the chain allows. Locked chains stay on until all 3 are locked; then they hold for 3 seconds and all break.
 
-The Slime Ball splits when hurt. Under 30 HP it pops into two slimes with 15 HP each. When one of those drops under
-5 HP, it pops into two tiny slimes with 3 HP each. A side only loses when all of its balls are gone.
+The Slime Ball splits when hurt. The big slime has 75 HP and takes 50% extra damage. Under 25 HP it pops into two
+slimes with 25 HP each. When one of those drops under 8 HP, it pops into two tiny slimes with 10 HP each. The tiny
+slimes take 75% less damage but only deal 1 damage. A side only loses when all of its balls are gone.
 
 The Healer Ball drops a heal at a random spot every 2.5–4 seconds (up to 3 at a time, each lasting 10 seconds). If the
 Healer Ball picks it up, it heals 12 HP. If the enemy touches it, the enemy takes 8 damage instead.
