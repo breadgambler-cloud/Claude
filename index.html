@@ -313,10 +313,10 @@
       // Hurt it enough and it splits in two, and the halves split again.
       // Generation 0 is the big slime; each split makes two of the next generation.
       slime: {
-        splitBelow: [25, 8],   // a gen-0 slime splits under 25 HP, a gen-1 slime under 8 HP
-        hp: [75, 25, 10],      // HP of each generation
+        splitBelow: [25, 3],   // a gen-0 slime splits under 25 HP; a gen-1 slime (3 HP) splits on any hit
+        hp: [75, 3, 10],       // HP of each generation
         radius: [12, 9, 6],
-        damage: [7, 5, 1],
+        damage: [7, 5, 2.5],
         taken: [1.5, 1, 0.25], // damage taken: the big one is squishy (+50%), the little ones are tough (-75%)
       },
     },
