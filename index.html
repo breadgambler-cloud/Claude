@@ -33,19 +33,29 @@
 <script>
 (() => {
   // ---------------------------------------------------------------------------
-  // Screen: everything is drawn at a tiny resolution and scaled up for pixels.
+  // Screen: the world is a tiny 320x180 space, scaled up for pixels. The canvas
+  // itself holds RES backing pixels per world pixel, so ball art can be drawn in
+  // finer "hi-px" (1/RES of a world pixel) while all game logic stays in world units.
   // ---------------------------------------------------------------------------
   const W = 320, H = 180;
+  const RES = 2;   // art density: hi-px per world px
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
-  canvas.width = W;
-  canvas.height = H;
-  ctx.imageSmoothingEnabled = false;
+  canvas.width = W * RES;
+  canvas.height = H * RES;
+  ctx.imageSmoothingEnabled = false;   // must be set again after any width/height change
+  ctx.setTransform(RES, 0, 0, RES, 0, 0);
+  const snap = v => Math.round(v * RES) / RES;   // round to the hi-px grid
 
+  // Integer-scale the backing store (not the world) so every backing pixel is the
+  // same whole number of device pixels and the art stays crisp.
   function fit() {
-    const scale = Math.max(1, Math.floor(Math.min(innerWidth / W, innerHeight / H)));
-    canvas.style.width = W * scale + 'px';
-    canvas.style.height = H * scale + 'px';
+    // Fill the window in whole world-pixel steps (like before the upscale). Even steps map each
+    // hi-res art pixel to whole screen pixels; odd steps are still crisp, just nearest-neighbor.
+    const dpr = window.devicePixelRatio || 1;
+    const n = Math.max(1, Math.floor(Math.min(innerWidth * dpr / W, innerHeight * dpr / H)));
+    canvas.style.width = W * n / dpr + 'px';
+    canvas.style.height = H * n / dpr + 'px';
   }
   addEventListener('resize', fit);
   fit();
@@ -80,7 +90,8 @@
       mass: 1,
       radius: 12,
       speed: 130,    // cruising speed in pixels per second
-      colors: { light: '#f4f7fb', base: '#c9d2de', dark: '#8a96a8', rim: '#4d586b' },
+      colors: { light: '#e6ebf2', base: '#c9d2de', dark: '#9aa6b8', rim: '#3a4458', deep: '#5d6880', glow: '#b9d4f0' },
+      equator: true, // a thin seam around its middle
     },
     axe: {
       name: 'AXE BALL',
@@ -90,7 +101,7 @@
       mass: 1,
       radius: 12,
       speed: 130,
-      colors: { light: '#a3aab6', base: '#6e7684', dark: '#474e5b', rim: '#262b35' },
+      colors: { light: '#7a7f8c', base: '#545a66', dark: '#363b46', rim: '#15181e' },
       seam: true,    // glowing orange crack down the middle
       weapon: {
         kind: 'axe',
@@ -109,7 +120,7 @@
       mass: 1,
       radius: 12,
       speed: 130,
-      colors: { light: '#6a5683', base: '#3d2f50', dark: '#271d35', rim: '#120d19' },
+      colors: { light: '#7a6496', base: '#45355c', dark: '#2a2038', rim: '#0e0a14', glow: '#8a7fd0' },
       eyes: true,    // red spider eyes and an hourglass mark
       legs: true,
       // Touch a wall to start a strand, touch a different wall to set the web
@@ -129,7 +140,7 @@
       mass: 1,
       radius: 12,
       speed: 130,
-      colors: { light: '#7fe0a2', base: '#2f9e5a', dark: '#1f6e3e', rim: '#0e3a20' },
+      colors: { light: '#7fe0a2', base: '#2f9e5a', dark: '#1f6e3e', rim: '#0b2e18' },
       pips: true,    // dice pips
       // It rolls a number for a few seconds and does no damage while rolling.
       // Once the number lands, its next hit deals exactly that much, which
@@ -149,7 +160,7 @@
       mass: 1,
       radius: 12,
       speed: 130,
-      colors: { light: '#a77ae0', base: '#5b2a9e', dark: '#3b1a6e', rim: '#1c0838' },
+      colors: { light: '#a77ae0', base: '#5b2a9e', dark: '#3b1a6e', rim: '#1c0838', glow: '#ff9cf5' },
       sigil: true,   // the purple crystal-star execute symbol
       // ...but once its hit leaves the enemy under this share of max HP, the enemy dies instantly.
       execute: { below: 0.2 },
@@ -162,7 +173,7 @@
       mass: 1,
       radius: 12,
       speed: 130,
-      colors: { light: '#c9ced6', base: '#8b929c', dark: '#5d646e', rim: '#2a2f37' },
+      colors: { light: '#a9b86a', base: '#6b7a3a', dark: '#4a5627', rim: '#222a10' },
       armor: true,   // plated, riveted body with treads
       // Once its HP falls to `at`, a shield comes up for the rest of the fight:
       // it cuts all damage it takes by `reduction` and raises its own damage by `damageBoost`.
@@ -176,7 +187,7 @@
       mass: 1,
       radius: 12,
       speed: 130,
-      colors: { light: '#d9775a', base: '#9c3b26', dark: '#6a2416', rim: '#2a0d07' },
+      colors: { light: '#e08a6a', base: '#a8432c', dark: '#6a2416', rim: '#2a0d07' },
       studs: true,   // short steel spikes around its rim
       // Every wall it hits grows a spike (medium or big) on that spot. Enemies
       // bounce off spikes and take their damage.
@@ -195,7 +206,7 @@
       mass: 1,
       radius: 12,
       speed: 130,
-      colors: { light: '#8a3352', base: '#4a1426', dark: '#2a0a16', rim: '#12030a' },
+      colors: { light: '#c23a5a', base: '#7a1530', dark: '#4a0a1e', rim: '#1a0410' },
       fangs: true,
       // It turns to face the enemy. Touch them with its fangs and it latches on,
       // draining HP and healing itself by the same amount.
@@ -216,7 +227,7 @@
       mass: 1,
       radius: 12,
       speed: 130,
-      colors: { light: '#5a6070', base: '#2b2f3a', dark: '#181b22', rim: '#07080b' },
+      colors: { light: '#6a7590', base: '#2b2f3a', dark: '#181b22', rim: '#07080b', glow: '#5a6a90', glowW: 2 },
       cap: true,     // metal fuse cap on top
       // Its fuse burns down and it blows up, hurting anything in the blast.
       bomb: {
@@ -234,7 +245,7 @@
       mass: 1,
       radius: 12,
       speed: 130,
-      colors: { light: '#ffffff', base: '#e6e0f5', dark: '#b9b0d6', rim: '#6d6488' },
+      colors: { light: '#ffffff', base: '#e6e0f5', dark: '#b9b0d6', rim: '#6d6488', alpha: 0.92 },
       face: true,    // spooky eyes and mouth
       // It keeps fading out. While faded it passes through everything and can't be hurt.
       ghost: { solid: 3, faded: 1.5 },
@@ -247,7 +258,7 @@
       mass: 1,
       radius: 12,
       speed: 130,
-      colors: { light: '#6f8ff5', base: '#2a3f9e', dark: '#1a2766', rim: '#0a1033' },
+      colors: { light: '#fff27a', base: '#f5c518', dark: '#c08a0a', rim: '#4a3000' },
       bolt: true,    // lightning bolt mark
       // Every few seconds it strikes the enemy with lightning, wherever they are.
       zap: { every: 3, damage: 6 },
@@ -260,7 +271,7 @@
       mass: 1,
       radius: 12,
       speed: 130,
-      colors: { light: '#f2fdff', base: '#9fe3f5', dark: '#5fb3d6', rim: '#2a6f8f' },
+      colors: { light: '#e6fbff', base: '#7fd3f0', dark: '#3f9ccf', rim: '#164a6e' },
       flake: true,   // snowflake mark
       // Its hits chill the enemy: they move at half speed for a while.
       freeze: { time: 2, slow: 0.5 },
@@ -273,7 +284,7 @@
       mass: 1,
       radius: 12,
       speed: 130,
-      colors: { light: '#9fd8ff', base: '#3a6fb0', dark: '#22497a', rim: '#0d1f3a' },
+      colors: { light: '#7fe8e0', base: '#2a9d9a', dark: '#1a6466', rim: '#0b2f33' },
       coil: true,    // copper coil bands
       // Every so often it charges up with blue electricity. If the enemy hits it
       // while charged, the enemy is shocked and stunned: frozen and unable to deal damage.
@@ -287,7 +298,7 @@
       mass: 1,
       radius: 12,
       speed: 130,
-      colors: { light: '#b7a58a', base: '#7a6a55', dark: '#4d4234', rim: '#221c14' },
+      colors: { light: '#ffb26b', base: '#e8792a', dark: '#b0501a', rim: '#4a1e06' },
       links: true,   // iron chain links around its rim
       // Every wall it hits gives it a chain anchored to that spot. Each hit on an
       // enemy locks one held chain onto them, reeling them toward that wall. Locked
@@ -308,7 +319,7 @@
       mass: 1,
       radius: 12,
       speed: 130,
-      colors: { light: '#c6f9a8', base: '#5fd35a', dark: '#2f9e3a', rim: '#14501c' },
+      colors: { light: '#e0ffb8', base: '#7ae05a', dark: '#3aa83a', rim: '#14501c' },
       goo: true,     // jelly bubbles
       // Hurt it enough and it splits in two, and the halves split again.
       // Generation 0 is the big slime; each split makes two of the next generation.
@@ -328,7 +339,7 @@
       mass: 1,
       radius: 12,
       speed: 130,
-      colors: { light: '#ffffff', base: '#eef0f5', dark: '#c3c7d3', rim: '#6f7486' },
+      colors: { light: '#ffffff', base: '#f4f1ee', dark: '#cfc8c4', rim: '#6f6a72' },
       cross: true,   // red medic cross
       // Every so often a heal drops somewhere random. The Healer Ball's side heals
       // from it; if the enemy grabs it, it hurts them instead.
@@ -342,7 +353,7 @@
       mass: 1,
       radius: 12,
       speed: 130,
-      colors: { light: '#9aa1ab', base: '#5f6670', dark: '#3d434c', rim: '#1b1f25' },
+      colors: { light: '#8fb4ff', base: '#3a6fd8', dark: '#1f3f8a', rim: '#0b1a40' },
       horseshoe: true,   // red horseshoe magnet with silver tips
       // It pulls nearby enemies in, then lets off a blast that throws them away.
       magnet: { pullTime: 2, rest: 2, range: 120, pull: 320, blastRadius: 60, blastDamage: 6, knock: 300 },
@@ -355,7 +366,7 @@
       mass: 1,
       radius: 12,
       speed: 175,        // fast...
-      colors: { light: '#ffffff', base: '#bfeeff', dark: '#7cc6e6', rim: '#3a7fa0' },
+      colors: { light: '#ffffff', base: '#c8fff0', dark: '#7cc6e6', rim: '#e8fbff', alpha: 0.45 },
       glint: true,
       // ...but fragile. Every time it's hurt, sharp shards scatter around it. An enemy
       // that touches a shard bleeds: for a while, every wall it hits (or every time it
@@ -370,7 +381,7 @@
       mass: 1,
       radius: 12,        // sprite size; the real size changes as it inflates
       speed: 150,
-      colors: { light: '#ff8a95', base: '#e8394a', dark: '#a8182a', rim: '#5a0a14' },
+      colors: { light: '#ffc2dc', base: '#ff5fa2', dark: '#c22d72', rim: '#5a0a32' },
       knot: true,
       // It keeps inflating: bigger, harder-hitting and tougher (more HP), but slower and
       // squishier (takes more damage). When it's full it pops back down and starts again.
@@ -392,7 +403,7 @@
       mass: 1,
       radius: 12,
       speed: 160,        // quick on its feet
-      colors: { light: '#e8c48a', base: '#b5803f', dark: '#7a5226', rim: '#3a240f' },
+      colors: { light: '#f0d29a', base: '#c08a48', dark: '#7a5226', rim: '#3a240f' },
       hat: true,         // cowboy hat
       // Keeps its revolver pointed at the enemy and fires a fast bullet that can bounce
       // off one wall. Then it has to reload.
@@ -470,8 +481,11 @@
     pass(0, 0, color);
   }
 
-  function drawTextCentered(str, cx, y, color, s = 1, outline) {
-    drawText(str, Math.round(cx - textWidth(String(str), s) / 2), y, color, s, outline);
+  // `fine` snaps to the hi-px grid instead of whole world px, so a number riding on a
+  // moving ball doesn't jitter against it.
+  function drawTextCentered(str, cx, y, color, s = 1, outline, fine = false) {
+    const x = cx - textWidth(String(str), s) / 2;
+    drawText(str, fine ? snap(x) : Math.round(x), fine ? snap(y) : y, color, s, outline);
   }
 
   // ---------------------------------------------------------------------------
@@ -541,282 +555,441 @@
     a.fillStyle = '#1f3050';
     for (let ty = 0; ty < fh; ty += 8) for (let tx = 0; tx < fw; tx += 8)
       if (((tx + ty) / 8) % 2 === 0) a.fillRect(fx + tx, fy + ty, 8, 8);
+    // a faint lit edge on the top-left of every other tile
+    a.fillStyle = '#26385c';
+    for (let ty = 0; ty < fh; ty += 8) for (let tx = 0; tx < fw; tx += 8)
+      if (((tx + ty) / 8) % 2 === 0) { a.fillRect(fx + tx, fy + ty, 8, 1); a.fillRect(fx + tx, fy + ty, 1, 8); }
     // inner shadow along the top and left walls
     a.fillStyle = 'rgba(0,0,0,0.35)';
     a.fillRect(fx, fy, fw, 2); a.fillRect(fx, fy, 2, fh);
     // corner rivets
-    a.fillStyle = '#4a6189';
-    for (const [rx, ry] of [[x + 3, y + 3], [x + size - 4, y + 3], [x + 3, y + size - 4], [x + size - 4, y + size - 4]])
-      a.fillRect(rx, ry, 1, 1);
+    for (const [rx, ry] of [[x + 3, y + 3], [x + size - 5, y + 3], [x + 3, y + size - 5], [x + size - 5, y + size - 5]]) {
+      a.fillStyle = '#0c1424'; a.fillRect(rx + 1, ry + 1, 2, 2);
+      a.fillStyle = '#4a6189'; a.fillRect(rx, ry, 2, 2);
+      a.fillStyle = '#8aa2cc'; a.fillRect(rx, ry, 1, 1);
+    }
   })();
 
-  // Pre-render each ball type as a shaded pixel sprite.
-  function makeBallSprite(type) {
-    const r = type.radius, d = r * 2 + 1;
+  // ---------------------------------------------------------------------------
+  // Ball sprites. Each one is painted per hi-px into a pixel buffer: one shared
+  // sphere shading model for the body, then the ball's own emblem on top.
+  // ---------------------------------------------------------------------------
+  const rgbCache = {};
+  function rgb(hex) {
+    if (!rgbCache[hex]) {
+      const n = parseInt(hex.slice(1), 16);
+      rgbCache[hex] = [n >> 16, (n >> 8) & 255, n & 255];
+    }
+    return rgbCache[hex];
+  }
+  function mix(a, b, k) {
+    const A = rgb(a), B = rgb(b);
+    return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * k).toString(16).padStart(2, '0')).join('');
+  }
+  const LIGHT = (() => { const v = [-0.6, -0.7, 0.4], l = Math.hypot(...v); return v.map(x => x / l); })();
+  const BAYER = [0, 2, 3, 1];   // 2x2 ordered dither, as quarters
+  const PLATE = { w: 6.5, h: 3.5 };   // half-size of the clear middle kept for the HP number (art units)
+
+  // Pre-render a ball type as a shaded pixel sprite, at RES hi-px per world px.
+  // `c.size` is the sprite's size in world units (what drawing code must use, never c.width).
+  // Art is authored in "art units": world px on a radius-12 ball, centered on the ball,
+  // so the same emblem code scales to split slimes and inflating balloons.
+  const SPR_PAD = 2;   // world px of room around the ball for halos, drips and arcs
+  function makeBallSprite(type, radius = type.radius) {
+    const r = radius, d = r * 2 + 1;
     const c = document.createElement('canvas');
-    c.width = d; c.height = d;
+    c.size = d + SPR_PAD * 2;
+    c.width = c.height = c.size * RES;
     const g = c.getContext('2d');
-    const { light, base, dark, rim } = type.colors;
-    for (let py = 0; py < d; py++) {
-      for (let px = 0; px < d; px++) {
-        const dx = px - r, dy = py - r;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist > r + 0.3) continue;
-        let col = base;
-        if (dist > r - 1.2) col = rim;
-        else {
-          // light comes from top-left
-          const shade = (dx + dy) / (r * 2) + dist / (r * 3);
-          if (shade < -0.25) col = light;
-          else if (shade > 0.3) col = dark;
-        }
-        g.fillStyle = col;
-        g.fillRect(px, py, 1, 1);
+    const D = c.width, img = g.createImageData(D, D), buf = img.data;
+    const S = r / 12;                 // art units -> world px
+    const E = 1 / (RES * S);          // one hi-px, in art units
+    const BR = (r + 0.5) / S;         // body radius in art units (12.5 on a normal ball)
+    const ctr = (SPR_PAD + r + 0.5) * RES;   // ball center, in hi-px
+    const col = type.colors;
+    const deep = col.deep || mix(col.dark, col.rim, 0.45);
+    const ramp = [col.light, col.base, col.dark, deep];
+    const ax = i => ((i + 0.5) - ctr) / RES / S;   // hi-px index -> art units
+    const hx = x => Math.floor(ctr + x * S * RES); // art units -> hi-px index
+
+    // blend `color` (alpha a) into hi-px (i, j)
+    function put(i, j, color, a = 1) {
+      if (i < 0 || j < 0 || i >= D || j >= D) return;
+      const o = (j * D + i) * 4, [R, G, B] = rgb(color);
+      const da = buf[o + 3] / 255, oa = a + da * (1 - a);
+      if (oa <= 0) return;
+      buf[o] = (R * a + buf[o] * da * (1 - a)) / oa;
+      buf[o + 1] = (G * a + buf[o + 1] * da * (1 - a)) / oa;
+      buf[o + 2] = (B * a + buf[o + 2] * da * (1 - a)) / oa;
+      buf[o + 3] = oa * 255;
+    }
+    // the ball's silhouette (a ghost scallops its hem)
+    const round = (x, y) => x * x + y * y <= BR * BR;
+    const body = type.face ? (x, y) => round(x, y) && y <= hem(x) : round;
+    // a ghost's hem: three bumps cut into the bottom 3 world px (the look only; it still collides round)
+    function hem(x) {
+      let bump = 0;
+      for (const c0 of [-5.4, 0, 5.4]) bump = Math.max(bump, Math.sqrt(Math.max(0, 1 - ((x - c0) / 2.8) ** 2)));
+      return BR - 3 / S + 3 / S * bump;
+    }
+    // inside the outline: emblems never paint over the ball's 1 hi-px outline
+    const inBody = (x, y) => body(x, y) && body(x + E, y) && body(x - E, y) && body(x, y + E) && body(x, y - E);
+    // Light on the sphere at (x, y): lam in -1..1, plus a dithered pick from a 4-tone ramp.
+    function sphere(x, y, i, j) {
+      const nx = x / BR, ny = y / BR, nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny));
+      const lam = nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2];
+      const t = lam + (BAYER[(i & 1) + (j & 1) * 2] / 4 - 0.375) * 0.18;
+      return { lam, tone: t > 0.64 ? 0 : t > 0.12 ? 1 : t > -0.32 ? 2 : 3 };
+    }
+    // Run fn on every hi-px inside the ball (or everywhere when `free`).
+    // fn(x, y, h) returns a color, [color, alpha], or nothing.
+    function paint(fn, free = false) {
+      for (let j = 0; j < D; j++) for (let i = 0; i < D; i++) {
+        const x = ax(i), y = ax(j);
+        if (!free && !inBody(x, y)) continue;
+        const h = sphere(x, y, i, j);
+        h.i = i; h.j = j;
+        h.shade = rmp => rmp[h.tone];
+        const out = fn(x, y, h);
+        if (!out) continue;
+        if (Array.isArray(out)) put(i, j, out[0], out[1]); else put(i, j, out);
       }
+    }
+    // A filled shape with a 1 hi-px outline and a beveled edge: lit top-left, shaded bottom-right.
+    // `fill` is a color or fn(x, y, h) -> color.
+    function shape(inside, { o, l, b, d: dk }, fill, free = false) {
+      paint((x, y, h) => {
+        if (!inside(x, y)) return;
+        if (o && (!inside(x + E, y) || !inside(x - E, y) || !inside(x, y + E) || !inside(x, y - E))) return o;
+        if (l && (!inside(x - 2 * E, y) || !inside(x, y - 2 * E))) return l;
+        if (dk && (!inside(x + 2 * E, y) || !inside(x, y + 2 * E))) return dk;
+        return typeof fill === 'function' ? fill(x, y, h) : fill || b;
+      }, free);
+    }
+    // Inside-tests for building shapes, all in art units.
+    const segDist = (x, y, x1, y1, x2, y2) => {
+      const dx = x2 - x1, dy = y2 - y1, L2 = dx * dx + dy * dy || 1;
+      const t = Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / L2));
+      return Math.hypot(x - x1 - dx * t, y - y1 - dy * t);
+    };
+    const stroke = (pts, w) => (x, y) => {
+      for (let k = 0; k < pts.length - 1; k++) if (segDist(x, y, ...pts[k], ...pts[k + 1]) <= w / 2) return true;
+      return false;
+    };
+    const oval = (cx, cy, rx, ry) => (x, y) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1;
+    const box = (x0, y0, x1, y1) => (x, y) => x >= x0 && x < x1 && y >= y0 && y < y1;
+    const poly = pts => (x, y) => {
+      let inside = false;
+      for (let k = 0, m = pts.length - 1; k < pts.length; m = k++) {
+        const [xi, yi] = pts[k], [xj, yj] = pts[m];
+        if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+      }
+      return inside;
+    };
+    const inPlate = (x, y, m = 0) => Math.abs(x) <= PLATE.w + m && Math.abs(y) <= PLATE.h + m;
+    // A w x h hi-px block centered on (x, y), for crisp tiny details that shouldn't scale.
+    function dot(x, y, w, h, color, a = 1) {
+      const i0 = Math.round(ctr + x * S * RES - w / 2), j0 = Math.round(ctr + y * S * RES - h / 2);
+      for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) put(i0 + i, j0 + j, color, a);
+    }
+
+    // A pattern of hi-px centered on (x, y): one string per row, each char looked up in `map`.
+    function pat(x, y, rows, map) {
+      const i0 = Math.round(ctr + x * S * RES - rows[0].length / 2), j0 = Math.round(ctr + y * S * RES - rows.length / 2);
+      rows.forEach((row, j) => [...row].forEach((ch, i) => { if (map[ch]) put(i0 + i, j0 + j, map[ch]); }));
+    }
+    // A 1 hi-px curve y = fy(x), with its thickness kept even where it gets steep.
+    const curve = (fy, w = 1) => (x, y) => {
+      const k = (fy(x + 0.05) - fy(x - 0.05)) / 0.1;
+      return Math.abs(y - fy(x)) <= w * E / 2 * Math.hypot(1, k);
+    };
+    // Rotate (x, y) by -a, so shapes can be authored along an axis and then turned.
+    const turn = (x, y, a) => [x * Math.cos(a) + y * Math.sin(a), -x * Math.sin(a) + y * Math.cos(a)];
+    let spec = [-0.45 * BR, -0.5 * BR, false];   // where the specular sits (and whether it's big); null = none
+
+    // --- body: outline, rim light, dithered sphere shading ---
+    const glow = col.glow || mix(col.base, '#9fb6dc', 0.35), glowW = col.glowW || 1;
+    const bodyA = col.alpha || 1;
+    paint((x, y, h) => {
+      if (!body(x, y)) return;
+      const edge = k => !body(x + k * E, y) || !body(x - k * E, y) || !body(x, y + k * E) || !body(x, y - k * E);
+      if (edge(1)) return col.rim;
+      // rim light: a thin band along the lower-right arc, bounced up from the floor
+      const facing = (x + y) / (Math.hypot(x, y) || 1) / Math.SQRT2;
+      if (facing > 0.5 && edge(1 + glowW)) return [glow, Math.max(bodyA, 0.8)];
+      return [h.shade(ramp), bodyA];
+    }, true);
+
+    if (type.equator) {
+      // the reference ball: a thin seam around its middle, bowed like a sphere's equator
+      const fy = x => 4.2 + 2.6 * Math.sqrt(Math.max(0, 1 - (x / BR) ** 2));
+      paint((x, y) => curve(fy)(x, y) ? col.dark : curve(x2 => fy(x2) + E)(x, y) ? '#f4f7fb' : null);
     }
     if (type.seam) {
-      // molten crack: bright core, hot orange, dim glow on the sides
-      for (let py = 0; py < d; py++) {
-        const dy = py - r;
-        const span = Math.sqrt(Math.max(0, r * r - dy * dy));
-        if (span < 2) continue;
-        const wob = Math.round(Math.sin(py * 0.9) * 0.6);
-        const cx = r + wob;
-        g.fillStyle = '#7a2a12'; g.fillRect(cx - 2, py, 1, 1); g.fillRect(cx + 2, py, 1, 1);
-        g.fillStyle = '#ff5a1f'; g.fillRect(cx - 1, py, 1, 1); g.fillRect(cx + 1, py, 1, 1);
-        g.fillStyle = Math.abs(dy) < r - 3 ? '#ffd27a' : '#ff8a3d'; g.fillRect(cx, py, 1, 1);
-      }
+      // molten crack down the middle: white-hot core, orange sides, a soft glow and a few embers
+      const cx = y => Math.round(Math.sin(y * 0.55) * 1.6 + Math.sin(y * 1.7) * 0.6) * E;
+      paint((x, y) => {
+        const dx = Math.abs(x - cx(y)), end = Math.abs(y) > BR - 2.5;
+        if (dx < 0.75 * (end ? 0.6 : 1)) return end ? '#ff7a2a' : '#fff1b8';
+        if (dx < 1.75) return '#ff7a2a';
+        if (dx < 2.75) return ['#ff5a1f', 0.25];
+      });
+      for (const [ex, ey] of [[-2.6, -7], [2.4, -3.5], [-2.8, 1], [2.7, 5.5], [-2.3, 8.5], [2.2, -9.5]]) dot(cx(ey) + ex, ey, 1, 1, '#ffb03b');
     }
     if (type.cap) {
-      g.fillStyle = '#07080b'; g.fillRect(r - 3, 0, 7, 4);
-      g.fillStyle = '#8b929c'; g.fillRect(r - 2, 1, 5, 2);
-      g.fillStyle = '#e4e8ee'; g.fillRect(r - 2, 1, 2, 1);
+      // brass fuse cap on top
+      shape(box(-3, -13, 3.5, -9.5), { o: '#07080b', l: '#fff3b0', d: '#8a6a3a' }, '#c9a36b', true);
+      dot(-1.5, -11, 2, 1, '#ffffff');
+      spec = [-0.42 * BR, -0.42 * BR, true];
     }
     if (type.face) {
-      g.fillStyle = '#2a2440';
-      g.fillRect(r - 6, r - 8, 3, 4); g.fillRect(r + 4, r - 8, 3, 4);     // eyes
-      g.fillRect(r - 1, r + 5, 3, 4);                                     // "oooo" mouth
-      g.fillStyle = '#ffffff'; g.fillRect(r - 6, r - 8, 1, 1); g.fillRect(r + 4, r - 8, 1, 1);
+      // a ghost: lavender halo around the scalloped hem, tall eyes, a little "o" mouth
+      paint((x, y) => {
+        if (body(x, y)) return;
+        for (let k = 1; k <= 2; k++) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]])
+          if (body(x + dx * k * E, y + dy * k * E)) return ['#c9b8ff', k === 1 ? 0.35 : 0.18];
+      }, true);
+      const eye = ['.oo.', 'oWoo', 'oooo', 'oooo', 'oooo', '.oo.'];
+      for (const ex of [-4, 4]) pat(ex, -6.4, eye, { o: '#2a2440', W: '#ffffff' });
+      pat(0, 7, ['.oo.', 'o..o', 'o..o', '.oo.'], { o: '#2a2440' });
+      dot(0, 7, 2, 2, '#6d6488');
+      spec = null;
     }
     if (type.bolt) {
-      // a lightning bolt from top-right to bottom-left
-      const pts = [[4, -10], [-3, -1], [2, -1], [-4, 10]];
-      g.fillStyle = '#ffe14d';
-      for (let i = 0; i < pts.length - 1; i++) {
-        const [x0, y0] = pts[i], [x1, y1] = pts[i + 1];
-        const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
-        for (let k = 0; k <= n; k++) {
-          const x = Math.round(r + x0 + (x1 - x0) * k / n), y = Math.round(r + y0 + (y1 - y0) * k / n);
-          g.fillRect(x - 1, y, 2, 1);
-        }
-      }
+      // a navy lightning bolt that zigs past the left of the HP number
+      const inBolt = poly([[-0.4, -11.8], [6.2, -10.8], [-2.2, -4.4], [1.2, -4.4], [-7.4, 10.6], [-6.2, 1.8], [-10.6, 1.8]]);
+      shape(inBolt, { o: '#0a1033', l: '#ffffff' }, '#1a2766');
     }
     if (type.zoneMark) {
-      // a white dashed box: the zone symbol
-      g.fillStyle = '#ffffff';
-      for (let k = -6; k <= 6; k++) {
-        if ((k + 6) % 3 === 2) continue;
-        g.fillRect(r + k, r - 6, 1, 1); g.fillRect(r + k, r + 6, 1, 1);
-        g.fillRect(r - 6, r + k, 1, 1); g.fillRect(r + 6, r + k, 1, 1);
-      }
+      // four white corner brackets framing the HP number, like a target lock
+      const L = 3, t = 1, X = PLATE.w + 1, Y = PLATE.h + 1;
+      const bracket = (x, y) => {
+        const ux = Math.abs(x), uy = Math.abs(y);
+        return (ux <= X && ux > X - L && uy <= Y && uy > Y - t) || (uy <= Y && uy > Y - L + 0.5 && ux <= X && ux > X - t);
+      };
+      shape(bracket, { o: '#3d0606' }, '#ffffff');
+      // hazard chevrons along the bottom arc
+      paint((x, y) => {
+        const d = Math.hypot(x, y);
+        if (y < 0 || Math.abs(x) > y * 1.1 || d < BR - 3 || d > BR - 2) return;
+        return Math.floor((x + y) / 1.5) % 2 ? '#ffd23f' : '#1b1f25';
+      });
     }
     if (type.hat) {
-      // cowboy hat: crown and a wide brim across the top
-      g.fillStyle = '#3a240f'; g.fillRect(r - 5, 0, 11, 5); g.fillRect(r - 10, 4, 21, 3);
-      g.fillStyle = '#6b4220'; g.fillRect(r - 4, 1, 9, 3); g.fillRect(r - 9, 5, 19, 1);
-      g.fillStyle = '#c0392b'; g.fillRect(r - 4, 3, 9, 1);   // hat band
-      // bandana knot near the bottom
-      g.fillStyle = '#c0392b'; g.fillRect(r - 5, d - 6, 11, 2);
+      // cowboy hat: dented crown, red band, wide brim with a lit top and a dark underside
+      paint((x, y) => y > -6.8 && y < -5 && x * x + y * y < (BR - 0.5) ** 2 ? ['#2a180a', 0.35] : null);   // brim shadow on the face
+      const crown = (x, y) => box(-4.5, -12.8, 4.5, -7.5)(x, y) && !box(-1, -12.8, 1, -11.8)(x, y);
+      shape(crown, { o: '#2a180a', l: '#9a6a38', d: '#4a2c12' }, (x, y) => y > -9.6 && y < -8.1 ? '#c0392b' : '#6b4220', true);
+      shape(oval(0, -7.4, 11.2, 1.6), { o: '#2a180a', l: '#9a6a38', d: '#2a180a' }, '#6b4220', true);
+      for (const ex of [-2.8, 2.8]) dot(ex, -4.4, 3, 1, '#2a180a');   // squinting eyes
+      // bandana over the lower face, with white dots
+      const scarf = poly([[-8.6, 7.2], [8.6, 7.2], [0, 12.9]]);
+      shape(scarf, { o: '#5a120c', d: '#8a2418' }, (x, y) => (Math.round(x * 1.2) + Math.round(y * 1.2)) % 4 === 0 && y < 10.5 ? '#ffd0c0' : '#c0392b');
+      // gold sheriff star on one side
+      pat(-8.6, 1.4, ['...o...', '..oYo..', 'ooYWYoo', 'oYYYYYo', '.oYYYo.', '.oYoYo.', '.o...o.'],
+        { o: '#5a3a0a', Y: '#ffd23f', W: '#fff3b0' });
+      spec = null;
     }
     if (type.bingo) {
-      // a colored stripe around the middle like a bingo ball, with a white label circle
-      for (let py = r - 6; py <= r + 6; py++) for (let px = 0; px < d; px++) {
-        if ((px - r) ** 2 + (py - r) ** 2 > (r - 1.2) ** 2) continue;
-        g.fillStyle = py === r - 6 || py === r + 6 ? '#1f3a8a' : '#2f6fdc';
-        g.fillRect(px, py, 1, 1);
-      }
-      for (let py = r - 5; py <= r + 5; py++) for (let px = r - 5; px <= r + 5; px++) {
-        if ((px - r) ** 2 + (py - r) ** 2 <= 25) { g.fillStyle = '#ffffff'; g.fillRect(px, py, 1, 1); }
-      }
+      // a bingo ball: a band bowed around the sphere and a white label for the number
+      const top = x => -6 + 1.1 * (x / BR) ** 2, bot = x => 6 + 1.1 * (x / BR) ** 2;
+      paint((x, y, h) => {
+        if (y < top(x) || y > bot(x)) return;
+        if (y < top(x) + E) return '#6fa0ff';
+        if (y > bot(x) - E) return '#1f3a8a';
+        return h.shade(['#3f80ec', '#2f6fdc', '#2a62c6', '#2350a8']);
+      });
+      shape(oval(0, 0, 7, 7), { o: '#1f3a8a', d: '#dfe4ee' }, '#ffffff');
+      pat(0, -4.9, ['oo.', 'o.o', 'oo.', 'o.o', 'oo.'], { o: '#2f6fdc' });
     }
     if (type.horseshoe) {
-      // a U-shaped magnet, red with silver tips, opening upward
-      for (let py = 0; py < d; py++) for (let px = 0; px < d; px++) {
-        const dx = px - r, dy = py - (r - 1);
-        const ring = Math.hypot(dx, dy);
-        const bottom = dy >= 0 && ring >= 4 && ring <= 8;
-        const leg = dy < 0 && dy >= -8 && Math.abs(dx) >= 4 && Math.abs(dx) <= 8;
-        if (!bottom && !leg) continue;
-        const tip = dy <= -5;
-        const edge = (bottom && (ring < 4.8 || ring > 7.2)) || (leg && (Math.abs(dx) < 4.8 || Math.abs(dx) > 7.2));
-        g.fillStyle = tip ? (edge ? '#8a929e' : '#e4e8ee') : (edge ? '#7a1020' : (dx < 0 ? '#ff5a5a' : '#d62a3a'));
-        g.fillRect(px, py, 1, 1);
-      }
+      // a horseshoe magnet opening upward, its legs either side of the HP number
+      const cy = 0.4, rin = 6.7, rout = 10, top = -6.4;
+      const U = (x, y) => {
+        if (y >= cy) { const d = Math.hypot(x, y - cy); return d >= rin && d <= rout; }
+        return y >= top && Math.abs(x) >= rin && Math.abs(x) <= rout;
+      };
+      shape(U, { o: '#3a0610', l: '#ff7a7a', d: '#7a1020' }, (x, y) => y < -3.2 ? (x < -8.4 || (x > 6.7 && x < 7.6) ? '#ffffff' : '#c4cad4') : '#d62a3a');
+      paint((x, y) => U(x, y) && Math.abs(y + 3.2) < E / 2 + 0.01 ? '#3a0610' : null);
+      pat(-8.35, -4.9, ['o.o', 'ooo', 'o.o'].map(r2 => r2), { o: '#1b1f25' });   // N
+      pat(8.35, -4.9, ['.oo', '.o.', 'oo.'], { o: '#1b1f25' });    // S
     }
     if (type.glint) {
-      // light catching the glass
-      g.fillStyle = '#ffffff';
-      for (let k = 0; k < 6; k++) { g.fillRect(r - 7 + k, r - 2 - k, 1, 1); g.fillRect(r - 5 + k, r + 1 - k, 1, 1); }
-      g.fillRect(r + 5, r + 5, 2, 1);
+      // see-through glass: a bright curved highlight up top, a small glint below, a faint inner rim
+      paint((x, y) => {
+        const d = Math.hypot(x, y), a = Math.atan2(y, x);
+        if (d > BR - 3.4 && d < BR - 2.2 && a > -2.75 && a < -1.75) return '#ffffff';
+        if (d > BR - 2.9 && d < BR - 2.2 && a > 0.35 && a < 0.95) return ['#ffffff', 0.85];
+        if (d > BR - 1.6 && a > -0.6 && a < 2.2) return ['#3a7fa0', 0.35];
+      });
+      spec = [-0.32 * BR, -0.32 * BR, false];
     }
     if (type.knot) {
-      // shine and a little knot at the bottom
-      g.fillStyle = '#ffd0d6'; g.fillRect(r - 6, r - 7, 3, 4); g.fillRect(r - 7, r - 5, 1, 2);
-      g.fillStyle = '#a8182a'; g.fillRect(r - 1, d - 3, 3, 2);
-      g.fillStyle = '#5a0a14'; g.fillRect(r, d - 1, 1, 1);
+      // a tall glossy shine and a knot at the bottom
+      const shine = (sx, sy) => (x, y) => { const [u, v] = turn(x + 4.6, y + 4.8, 0.5); return (u / sx) ** 2 + (v / sy) ** 2 <= 1; };
+      paint((x, y) => shine(1.9, 3.8)(x, y) ? '#ffffff' : shine(2.8, 5)(x, y) ? ['#ffd6e8', 0.75] : null);
+      dot(3.6, 7.4, 2, 1, '#ffd6e8');
+      shape(poly([[-1.8, BR + 1.3], [1.8, BR + 1.3], [0, BR - 1]]), { o: '#5a0a32', l: '#ff5fa2' }, '#c22d72', true);
+      spec = null;
     }
     if (type.goo) {
-      // bubbles floating in the jelly
-      for (const [bx, by, br] of [[-6, -4, 2], [5, 4, 2], [-3, 7, 1], [7, -6, 1], [-8, 3, 1]]) {
-        g.fillStyle = '#c6f9a8'; g.fillRect(r + bx, r + by, br, br);
-        g.fillStyle = '#ffffff'; g.fillRect(r + bx, r + by, 1, 1);
+      // jelly: a darker core blob, a cute face, ring bubbles and drips off the bottom
+      paint((x, y, h) => oval(1, 2, 6, 6)(x, y) ? [h.tone >= 2 ? '#3aa83a' : '#4fc04a', 0.55] : null);
+      const big = r < 12;   // the little ones get bigger eyes
+      for (const ex of [-2.4, 2.4]) {
+        pat(ex, -5.6, big ? ['oo', 'oo', 'oo', 'oo'].map(s2 => s2 + (r < 8 ? 'o' : '')) : ['oo', 'oo', 'oo'], { o: '#14501c' });
+        dot(ex - 0.3, -6.2, 1, 1, '#ffffff');
+      }
+      const ring = ['.ww.', 'w..w', 'w..w', '.ww.'];
+      for (const [bx, by] of [[-7.4, 1.5], [6.8, 5.2], [7.6, -4.2], [-3.6, 8.6]]) {
+        pat(bx, by, ring, { w: '#e0ffb8' }); dot(bx - 0.4, by - 0.4, 1, 1, '#ffffff');
+      }
+      for (const [dx, len] of [[4.2, 4], [-5.8, 3]]) {
+        const ey = Math.sqrt(BR * BR - dx * dx) - 0.6;
+        pat(dx, ey + len / RES / S / 2, Array.from({ length: len }, (_, k) => k === len - 1 ? '.oo.' : 'oBBo'), { o: col.rim, B: col.dark });
       }
     }
     if (type.cross) {
-      // red medic cross with a dark outline
-      g.fillStyle = '#7a1020'; g.fillRect(r - 3, r - 9, 7, 19); g.fillRect(r - 9, r - 3, 19, 7);
-      g.fillStyle = '#e8283c'; g.fillRect(r - 2, r - 8, 5, 17); g.fillRect(r - 8, r - 2, 17, 5);
-      g.fillStyle = '#ff7a8a'; g.fillRect(r - 2, r - 8, 1, 6); g.fillRect(r - 8, r - 2, 6, 1);
+      // a beveled red medic cross; its middle is darker so the white HP number pops
+      const cross = (x, y) => box(-3.5, -10.5, 3.5, 10.5)(x, y) || box(-10.5, -3.5, 10.5, 3.5)(x, y);
+      shape(cross, { o: '#5a0a14', l: '#ff7a8a', d: '#a8182a' }, (x, y) => inPlate(x, y, -0.5) ? '#a8182a' : '#e8283c');
+      // a small gold halo floating above (its back half hides behind the ball)
+      const halo = (x, y) => Math.abs(Math.hypot(x / 5.5, (y + 13) / 1.5) - 1) < 0.16;
+      paint((x, y) => halo(x, y) && (y > -13 || !body(x, y)) ? ['#ffe14d', 0.8] : null, true);
     }
     if (type.links) {
-      // two chains wrapped around the ball, crossing in an X. Each band bows a little
-      // like it's curving around a sphere; links alternate flat ring / edge-on bar.
-      const inBall = (x, y) => (x - r) ** 2 + (y - r) ** 2 <= (r - 0.8) ** 2;
-      const put = (x, y, col) => { if (inBall(x, y)) { g.fillStyle = col; g.fillRect(x, y, 1, 1); } };
-      for (const [ang, bow] of [[0.75, 3], [-0.75, -3]]) {
-        const c = Math.cos(ang), sn = Math.sin(ang);
-        let prev = null;
-        for (let u = -r; u <= r; u += 0.5) {
-          const v = bow * (1 - (u / r) ** 2);
-          const x = Math.round(r + u * c - v * sn), y = Math.round(r + u * sn + v * c);
-          const key = x + ',' + y;
-          if (key === prev) continue;
-          prev = key;
-          const link = Math.floor((u + r) / 3.5);
-          const face = link % 2 === 0;
-          const px = -sn, py = c;   // across the band
-          // dark shadow under the chain
-          put(Math.round(x + px * 2), Math.round(y + py * 2), '#221c14');
-          put(Math.round(x - px * 2), Math.round(y - py * 2), '#221c14');
-          if (face) {
-            // flat ring: two steel rails with a dark hole between
-            put(Math.round(x + px), Math.round(y + py), '#e4e8ee');
-            put(Math.round(x - px), Math.round(y - py), '#9aa1ab');
-            put(x, y, '#2a241c');
-          } else {
-            // edge-on link: one bright bar
-            put(Math.round(x + px), Math.round(y + py), '#221c14');
-            put(Math.round(x - px), Math.round(y - py), '#221c14');
-            put(x, y, '#c9ced6');
+      // two chains crossing in an X, bowed around the sphere, with a gap for the HP number.
+      // Links alternate: a flat ring (two rails and a hole) then one seen edge-on (a bar).
+      const chainAt = (x, y) => {
+        if (inPlate(x, y, 0.3)) return null;
+        for (const [a, bow] of [[1.0, 1.2], [-1.0, -1.2]]) {
+          const [u, v0] = turn(x, y, a), v = v0 - bow * (1 - (u / BR) ** 2);
+          if (Math.abs(v) > 1.6) continue;
+          const link = Math.floor((u + BR) / 3.2), f = (u + BR) / 3.2 - link;
+          if (link % 2 === 0) {
+            if (Math.abs(v) > 1.1 || f < 0.12 || f > 0.88) return '#221c14';
+            if (Math.abs(v) > 0.5 || f < 0.3 || f > 0.7) return v < 0 ? '#e4e8ee' : '#9aa1ab';
+            return '#4a1e06';
           }
+          if (Math.abs(v) <= 0.9) return Math.abs(v) <= 0.4 ? '#e4e8ee' : '#221c14';
         }
-      }
-      // a padlock hanging where the chains cross, just below the middle
-      g.fillStyle = '#221c14'; g.fillRect(r - 3, r + 4, 7, 6);
-      g.fillStyle = '#d9a520'; g.fillRect(r - 2, r + 5, 5, 4);
-      g.fillStyle = '#fff3b0'; g.fillRect(r - 2, r + 5, 2, 1);
-      g.fillStyle = '#221c14'; g.fillRect(r, r + 6, 1, 2);
-      g.fillStyle = '#9aa1ab'; g.fillRect(r - 1, r + 2, 1, 2); g.fillRect(r + 1, r + 2, 1, 2); g.fillRect(r - 1, r + 2, 3, 1);
+        return null;
+      };
+      paint((x, y) => chainAt(x, y) || (chainAt(x - E, y - E) ? '#221c14' : null));
+      // a padlock under the HP number
+      paint((x, y) => Math.abs(Math.hypot(x, y - 5.4) - 1.1) < E * 0.75 && y < 5.4 ? '#9aa1ab' : null);
+      shape(box(-1.75, 5.2, 1.75, 8.4), { o: '#221c14', l: '#fff3b0', d: '#9a7410' }, '#d9a520');
+      dot(0, 6.9, 1, 2, '#221c14');
     }
     if (type.coil) {
-      // copper coil bands with a bright terminal on each side
-      for (const cy of [r - 7, r + 6]) {
-        for (let px = 0; px < d; px++) {
-          if ((px - r) ** 2 + (cy - r) ** 2 > (r - 1.2) ** 2) continue;
-          g.fillStyle = px % 2 ? '#c97a3a' : '#e8a25f'; g.fillRect(px, cy, 1, 2);
-        }
+      // two copper coils bowed around the sphere, brass terminals, and a faint arc between them
+      for (const c0 of [-6.6, 5.4]) {
+        const yc = x => c0 + 1.3 * (1 - (x / BR) ** 2);
+        paint((x, y) => {
+          const v = y - yc(x);
+          if (Math.abs(v) > 1.3) return;
+          if (Math.floor((x + v * 0.5) / 1.5 * RES * S) % (RES * 1.5 * S | 0 || 1) === 0) return '#4a2410';   // gap between turns
+          return v < -0.6 ? '#e8a25f' : v > 0.6 ? '#7a4418' : '#c97a3a';
+        });
       }
-      g.fillStyle = '#ffe14d'; g.fillRect(2, r - 1, 2, 3); g.fillRect(d - 4, r - 1, 2, 3);
+      for (const tx of [-10, 10]) pat(tx, 0, ['.ooo.', 'oWYYo', 'oYYYo', 'oYYdo', '.ooo.'], { o: '#3a2a08', W: '#fff7c0', Y: '#ffe14d', d: '#b8901a' });
+      for (const sx of [-8.2, 8.2]) paint((x, y) => Math.abs(y) < 3.2 && Math.abs(x - sx - (Math.floor(y * 1.4) % 2 ? 0.5 : -0.5) * E * 2) < E / 2 + 0.01 ? ['#7fd8ff', 0.6] : null);
     }
     if (type.flake) {
-      // six-armed snowflake
-      g.fillStyle = '#ffffff';
+      // crystal facets on the lit side, a white snowflake behind the number, frost on the rim
+      for (const [pts, c2, a] of [
+        [[[-11.6, -2], [-8.2, -8.4], [-5.2, -6.6], [-7.6, -1.6]], '#c8f2ff', 0.7],
+        [[[-8.2, -8.4], [-3, -11.6], [-1, -8.6], [-5.2, -6.6]], '#e6fbff', 0.8],
+        [[[-7.6, -1.6], [-5.2, -6.6], [-2.6, -4.6], [-4.4, 0.2]], '#a8e4f8', 0.6],
+      ]) paint((x, y) => poly(pts)(x, y) ? [c2, a] : null);
+      const arms = [];
       for (let k = 0; k < 6; k++) {
-        const a = k * Math.PI / 3 + Math.PI / 6;
-        for (let d2 = 3; d2 <= 10; d2++) g.fillRect(Math.round(r + Math.cos(a) * d2), Math.round(r + Math.sin(a) * d2), 1, 1);
-        const bx = r + Math.cos(a) * 7, by = r + Math.sin(a) * 7;
-        for (const off of [-0.9, 0.9]) {
-          g.fillRect(Math.round(bx + Math.cos(a + off) * 2), Math.round(by + Math.sin(a + off) * 2), 1, 1);
-        }
+        const a = k * Math.PI / 3 + Math.PI / 6, c2 = Math.cos(a), s2 = Math.sin(a);
+        arms.push([[c2 * 2, s2 * 2], [c2 * 10, s2 * 10]]);
+        for (const off of [-0.8, 0.8]) arms.push([[c2 * 7, s2 * 7], [c2 * 7 + Math.cos(a + off) * 2.2, s2 * 7 + Math.sin(a + off) * 2.2]]);
       }
+      const flake = (x, y) => arms.some(([p, q]) => segDist(x, y, ...p, ...q) <= 0.6);
+      shape(flake, { o: '#1f6e9e' }, '#ffffff');
+      for (const a of [-2.2, -1.2, 0.3, 1.1, 2.0, 2.8]) dot(Math.cos(a) * (BR - 1.4), Math.sin(a) * (BR - 1.4), 1, 1, '#ffffff');
     }
     if (type.armor) {
-      const inBall = (px, py) => (px - r) ** 2 + (py - r) ** 2 <= (r - 1.2) ** 2;
-      // treads across the bottom
-      for (let py = r + 6; py < d; py++) for (let px = 0; px < d; px++) {
-        if (!inBall(px, py)) continue;
-        g.fillStyle = (px + (py === r + 6 ? 0 : 1)) % 3 === 0 ? '#1b1f25' : '#3a4049';
-        g.fillRect(px, py, 1, 1);
-      }
-      // plate seams with rivets
-      for (const sy of [r - 6, r + 5]) {
-        for (let px = 0; px < d; px++) {
-          if (!inBall(px, sy)) continue;
-          g.fillStyle = '#3d434c'; g.fillRect(px, sy, 1, 1);
-          if (px % 4 === 1 && inBall(px, sy - 1)) { g.fillStyle = '#e4e8ee'; g.fillRect(px, sy - 1, 1, 1); }
-        }
-      }
-      // side plates
-      g.fillStyle = '#6c737d';
-      g.fillRect(2, r - 4, 2, 8); g.fillRect(d - 4, r - 4, 2, 8);
-      // hatch on top
-      g.fillStyle = '#2a2f37'; g.fillRect(r - 4, 2, 9, 4);
-      g.fillStyle = '#a5acb6'; g.fillRect(r - 3, 3, 7, 2);
-      g.fillStyle = '#e4e8ee'; g.fillRect(r - 3, 3, 3, 1);
+      // olive tank: treads with cleats and road wheels, a riveted plate seam, a lit hatch and a star
+      paint((x, y) => {
+        if (y < BR - 5) return;
+        if (y < BR - 5 + E) return '#5d6650';
+        return ((x + 100) % 2) < 2 * E ? '#5d6650' : '#22261c';
+      });
+      for (const wx of [-4, 4]) pat(wx, BR - 2.4, ['.ooo.', 'oWMMo', 'oMdMo', 'oMMMo', '.ooo.'], { o: '#14160f', W: '#c9ced6', M: '#8b929c', d: '#3a3f48' });
+      const seam = x => -5 + 1.2 * (1 - (x / BR) ** 2);
+      paint((x, y) => curve(seam)(x, y) && Math.abs(x) > 3.6 ? '#2e3818' : null);
+      for (const rx of [-9, -6, 6, 9]) dot(rx, seam(rx) - 0.9, 1, 1, '#c9d07a');
+      shape(oval(0, -9.4, 4.2, 2.6), { o: '#222a10', l: '#c9d07a', d: '#4a5627' }, (x, y, h) => h.tone <= 1 ? '#a9b86a' : '#8a9a50');
+      dot(-1.6, -10.4, 2, 1, '#eef2b8');
+      pat(-8.4, 0.4, ['...W...', '...W...', 'WWWWWWW', '.WWWWW.', '..WWW..', '.WW.WW.', 'W.....W'], { W: '#e8ecd8' });
     }
     if (type.sigil) {
-      // crystal star: a diamond and a square overlapped, faceted light to dark
-      for (let py = 0; py < d; py++) {
-        for (let px = 0; px < d; px++) {
-          const dx = px - r, dy = py - r;
-          const inDiamond = Math.abs(dx) + Math.abs(dy) <= 10;
-          const inSquare = Math.max(Math.abs(dx), Math.abs(dy)) <= 6;
-          if (!inDiamond && !inSquare) continue;
-          const edge = Math.abs(dx) + Math.abs(dy) >= 9.5 && !inSquare ||
-                       Math.max(Math.abs(dx), Math.abs(dy)) === 6 && !(Math.abs(dx) + Math.abs(dy) <= 8);
-          let col;
-          if (edge) col = '#2a0c52';
-          else if (dx < 0 && dy < 0) col = '#d6a8ff';       // lit facet
-          else if (dx >= 0 && dy < 0) col = '#b57cf2';
-          else if (dx < 0 && dy >= 0) col = '#9a5ee0';
-          else col = '#7a3fc4';                              // shadow facet
-          g.fillStyle = col; g.fillRect(px, py, 1, 1);
-        }
-      }
-      // glowing four-point sparkle in the middle
-      g.fillStyle = '#ff9cf5';
-      g.fillRect(r - 1, r - 4, 3, 9); g.fillRect(r - 4, r - 1, 9, 3);
-      g.fillStyle = '#ffffff';
-      g.fillRect(r, r - 5, 1, 11); g.fillRect(r - 5, r, 11, 1);
+      // a faceted 4-point crystal star framing a clear middle for the HP number
+      const lens = (x, y, k) => (x / (PLATE.w + k)) ** 2 + (y / (PLATE.h + k)) ** 2 <= 1;
+      const star = (x, y) => (Math.abs(x) ** 0.7 + Math.abs(y) ** 0.7 <= 11 ** 0.7 || lens(x, y, 2.4)) && !lens(x, y, 1);
+      shape(star, { o: '#1c0838' }, (x, y) => x < 0 && y < 0 ? '#e8c8ff' : x >= 0 && y < 0 ? '#b57cf2' : x < 0 ? '#8a4fd6' : '#5b2a9e');
+      // a bright ridge down the middle of each point
+      paint((x, y) => star(x, y) && !lens(x, y, 2.6) && (Math.abs(x) < E / 2 + 0.01 || Math.abs(y) < E / 2 + 0.01) ? '#ffffff' : null);
     }
     if (type.pips) {
-      // dice pips around the edge (the middle is left clear for the HP number)
-      const pips = [[-7, -6], [6, -6], [-8, 2], [7, 2], [-3, 7], [3, 7], [0, -9]];
-      for (const [px, py] of pips) {
-        g.fillStyle = '#0e3a20'; g.fillRect(r + px, r + py + 1, 2, 2);
-        g.fillStyle = '#ffffff'; g.fillRect(r + px, r + py, 2, 2);
+      // a casino chip: white inserts around the rim and a dashed inner ring
+      for (let k = 0; k < 8; k++) {
+        const a = k * Math.PI / 4 + Math.PI / 8;
+        shape((x, y) => { const [u, v] = turn(x, y, a); return Math.abs(u - 10.1) <= 1.25 && Math.abs(v) <= 0.75 + E * 0.1; },
+          {}, (x, y, h) => h.tone >= 2 ? '#d8e8dc' : '#ffffff');
       }
+      paint((x, y) => {
+        const d = Math.hypot(x, y);
+        if (Math.abs(d - 7.9) > E / 2 + 0.01) return;
+        return Math.floor((Math.atan2(y, x) + Math.PI) / (Math.PI / 12)) % 2 ? '#7fe0a2' : null;
+      });
     }
     if (type.eyes) {
-      // hourglass on the belly
-      g.fillStyle = '#d4202c';
-      [5, 3, 1, 1, 3, 5].forEach((w, row) =>
-        g.fillRect(r - Math.floor(w / 2), r + 5 + row, w, 1));
-      // two big eyes and two small ones, up top
-      const eye = (ex, ey, size) => {
-        g.fillStyle = '#ff2a3a'; g.fillRect(ex, ey, size, size);
-        g.fillStyle = '#ffd0d4'; g.fillRect(ex, ey, 1, 1);
-      };
-      eye(r - 4, r - 8, 3); eye(r + 2, r - 8, 3);
-      eye(r - 6, r - 5, 2); eye(r + 5, r - 5, 2);
+      // a spider's face: an hourglass on its back (top), six eyes and two pale fangs; hairy specks
+      for (const [hx2, hy] of [[-8, 3], [-6.5, 6.5], [7, 4.5], [5, 8.2], [-2.5, 9.6], [2.2, 10.8], [-9.6, -1.4], [9.8, -0.6], [-4.4, -10.2], [4.6, -10.2]]) dot(hx2, hy, 1, 1, '#5a4874');
+      pat(0, -10.9, ['ooooooo', 'oRRRRRo', '.oRRRo.', '..oRo..', '.oRRRo.', 'oRRRRRo', 'ooooooo'], { o: '#0e0a14', R: '#d4202c' });
+      const eyeMap = { o: '#0e0a14', G: '#ffd0d4', R: '#ff2a3a', r: '#a8101e' };
+      for (const s2 of [-1, 1]) {
+        pat(s2 * 2.1, -6.9, ['.oooo.', 'oGRRRo', 'oRRRRo', 'oRRRro', 'oRRrro', '.oooo.'], eyeMap);
+        pat(s2 * 5.0, -7.4, ['.ooo.', 'oGRRo', 'oRRro', '.ooo.'], eyeMap);
+        pat(s2 * 6.9, -4.6, ['.ooo.', 'oGRRo', 'oRRro', '.ooo.'], eyeMap);
+        pat(s2 * 1.2, -4.3, ['oo', 'WW', 'WW', 'Ws', 'Ws', '.s'], { o: '#0e0a14', W: '#e8dcc8', s: '#a89c88' });
+      }
+      spec = null;
     }
-    // specular highlight
-    g.fillStyle = '#ffffff';
-    g.fillRect(r - 6, r - 8, 3, 2);
-    g.fillRect(r - 7, r - 7, 1, 2);
+    if (type.studs) {
+      // a few darker scuffs on the rusty body (the studs themselves are drawn live, turning)
+      for (const [sx, sy] of [[5.5, -6.5], [-7.5, 4.5], [3.5, 8]]) pat(sx, sy, ['dd.', '.dd'], { d: col.dark });
+    }
+
+    // specular: a small oval at the top-left and a glint beside it
+    if (spec) {
+      const [sx, sy, big] = spec;
+      if (big) { dot(sx, sy, 6, 3, '#ffffff'); dot(sx, sy, 4, 5, '#ffffff'); dot(sx + 3.5 * E * 1.4, sy - 3 * E, 1, 1, '#ffffff'); }
+      else { dot(sx, sy, 4, 2, '#ffffff'); dot(sx, sy, 2, 3, '#ffffff'); dot(sx + 3 * E, sy - 2 * E, 1, 1, '#ffffff'); }
+    }
+    g.putImageData(img, 0, 0);
     return c;
   }
-  for (const key in BALL_TYPES) BALL_TYPES[key].sprite = makeBallSprite(BALL_TYPES[key]);
+  // Sprites are cached per whole radius, so split slimes and inflating balloons get
+  // their own crisp art instead of a stretched copy.
+  function spriteFor(type, r) {
+    r = Math.max(4, Math.round(r));
+    if (!type.sprites) type.sprites = new Map();
+    if (!type.sprites.has(r)) type.sprites.set(r, makeBallSprite(type, r));
+    return type.sprites.get(r);
+  }
+  for (const key in BALL_TYPES) BALL_TYPES[key].sprite = spriteFor(BALL_TYPES[key], BALL_TYPES[key].radius);
+
+  // Draw a ball sprite centered on (cx, cy), `scale` times its world size.
+  function drawSprite(spr, cx, cy, scale = 1) {
+    const w = spr.size * scale;
+    ctx.drawImage(spr, snap(cx - w / 2), snap(cy - w / 2), snap(w), snap(w));
+  }
 
   // Axe sprite, drawn pointing right. The pivot (ball center) is at (0, AXE_PIVOT_Y).
   const AXE_ART = [
@@ -846,14 +1019,26 @@
   const AXE_HANDLE = { x0: 12, x1: 34, half: 2 };                // the shaft
   const AXE_HEAD = { x0: 22, x1: 36, y0: -12.5, y1: 3 };          // the head and blade
   const AXE_BLADE = { x: 30, y: -7 };                              // blade center, for clashes and trails
+  // The axe is painted at RES: each art pixel becomes a RES x RES block, then the outline is
+  // thinned to 1 hi-px (its inner layer takes the color beside it) so it matches the ball art.
+  const AXE_W = AXE_ART[0].length, AXE_H = AXE_ART.length;
   const axeSprite = document.createElement('canvas');
-  axeSprite.width = AXE_ART[0].length;
-  axeSprite.height = AXE_ART.length;
+  axeSprite.width = AXE_W * RES;
+  axeSprite.height = AXE_H * RES;
   (function paintAxe() {
     const g = axeSprite.getContext('2d');
-    AXE_ART.forEach((row, y) => [...row].forEach((ch, x) => {
-      if (AXE_COLORS[ch]) { g.fillStyle = AXE_COLORS[ch]; g.fillRect(x, y, 1, 1); }
-    }));
+    const at = (x, y) => (AXE_ART[Math.floor(y / RES)] || '')[Math.floor(x / RES)] || ' ';
+    const solid = ch => !!AXE_COLORS[ch];
+    for (let y = 0; y < AXE_H * RES; y++) for (let x = 0; x < AXE_W * RES; x++) {
+      let ch = at(x, y);
+      if (!solid(ch)) continue;
+      if (ch === 'o') {
+        const near = [at(x + 1, y), at(x - 1, y), at(x, y + 1), at(x, y - 1)];
+        const inner = near.find(n => solid(n) && n !== 'o');
+        if (near.every(solid) && inner) ch = inner;
+      }
+      g.fillStyle = AXE_COLORS[ch]; g.fillRect(x, y, 1, 1);
+    }
   })();
 
   // ---------------------------------------------------------------------------
@@ -1929,22 +2114,20 @@
     bullets = bullets.filter(bu => !bu.done);
   }
 
-  // The revolver, pointed where the Gunslinger is aiming.
+  // The revolver, pointed where the Gunslinger is aiming: a dark barrel with a lit top,
+  // a cylinder bump and a wooden grip that always hangs below the barrel.
   function drawGun(x, y, r, ang, flash) {
-    const c = Math.cos(ang), s2 = Math.sin(ang);
-    const px = -s2, py = c;
-    // grip, angled back a bit
-    ctx.fillStyle = '#5a3418';
-    pixLine(x + c * (r - 1) + px * 1, y + s2 * (r - 1) + py * 1, x + c * (r - 3) + px * 4, y + s2 * (r - 3) + py * 4);
-    pixLine(x + c * r + px * 1, y + s2 * r + py * 1, x + c * (r - 2) + px * 4, y + s2 * (r - 2) + py * 4);
-    // cylinder and barrel
-    ctx.fillStyle = '#1b1f25';
-    pixLine(x + c * (r - 1) - px, y + s2 * (r - 1) - py, x + c * (r + 9) - px, y + s2 * (r + 9) - py);
-    ctx.fillStyle = '#9aa1ab';
-    pixLine(x + c * (r - 1), y + s2 * (r - 1), x + c * (r + 9), y + s2 * (r + 9));
-    ctx.fillStyle = '#e4e8ee';
-    ctx.fillRect(Math.round(x + c * (r + 2)), Math.round(y + s2 * (r + 2)), 2, 2);
+    const flip = Math.cos(ang) < 0 ? -1 : 1;
+    fineShape(x, y, r + 11, ang, (u, v0) => {
+      const v = v0 * flip;
+      if (u >= r + 0.5 && u <= r + 3.5 && v >= -1.4 && v <= 1.2) return v < -0.9 ? '#8a929e' : '#3a3f48';   // cylinder
+      if (u >= r - 1 && u <= r + 9 && v >= -0.9 && v <= 0.4) return v < -0.4 ? '#9aa1ab' : '#1b1f25';        // barrel
+      if (inTri(u, v, r - 0.8, 0.2, r + 1.6, 0.2, r - 1, 3.8) || inTri(u, v, r - 0.8, 0.2, r - 1, 3.8, r - 3, 3.4)) {
+        return v < 0.9 ? '#a8703a' : '#7a4a20';                                                             // grip
+      }
+    }, '#0a0c10');
     if (flash > 0) {
+      const c = Math.cos(ang), s2 = Math.sin(ang);
       const fx = x + c * (r + 11), fy = y + s2 * (r + 11);
       ctx.fillStyle = '#fff3b0'; ctx.fillRect(Math.round(fx) - 2, Math.round(fy) - 2, 5, 5);
       ctx.fillStyle = '#ff8a3d'; ctx.fillRect(Math.round(fx) - 1, Math.round(fy) - 1, 3, 3);
@@ -2066,13 +2249,13 @@
     applyBalloon(b);
     if (b.inflate >= 1) {
       // POP: a burst that hurts anything close, then it's small again
-      popups.push({ x: b.x, y: b.y - b.r - 8, text: 'POP!', t: -0.1, color: '#ff8a95' });
+      popups.push({ x: b.x, y: b.y - b.r - 8, text: 'POP!', t: -0.1, color: '#ff8ac0' });
       effects.push({ kind: 'boom', x: b.x, y: b.y, r: cfg.popRadius, t: 0, life: 0.3 });
       burst(b.x, b.y, b.type.colors, 20);
       shake = Math.max(shake, 0.25);
       for (const o of balls) {
         if (!o.alive || o.side === b.side) continue;
-        if (Math.hypot(o.x - b.x, o.y - b.y) <= cfg.popRadius + o.r) hurt(o, cfg.popDamage, b, '#ff8a95');
+        if (Math.hypot(o.x - b.x, o.y - b.y) <= cfg.popRadius + o.r) hurt(o, cfg.popDamage, b, '#ff8ac0');
       }
       b.inflate = 0;
       applyBalloon(b);
@@ -2415,6 +2598,45 @@
     }
   }
 
+  // Fine drawing, in hi-px (1/RES of a world px), for everything attached to a ball.
+  function fpx(x, y, w = 1, h = 1) { ctx.fillRect(snap(x), snap(y), w / RES, h / RES); }
+  // A hi-px line, `w` hi-px thick. `color` may be a function of the step, for striped ropes.
+  function fineLine(x0, y0, x1, y1, w = 1, color = null) {
+    x0 = Math.round(x0 * RES); y0 = Math.round(y0 * RES); x1 = Math.round(x1 * RES); y1 = Math.round(y1 * RES);
+    const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+    let err = dx + dy;
+    for (let i = 0; i < 2000; i++) {
+      if (color) ctx.fillStyle = color(i);
+      ctx.fillRect(x0 / RES, y0 / RES, w / RES, w / RES);
+      if (x0 === x1 && y0 === y1) break;
+      const e2 = 2 * err;
+      if (e2 >= dy) { err += dy; x0 += sx; }
+      if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+  }
+  // Fill a shape around (cx, cy) in hi-px. test(u, v) gets world-px coordinates along `ang` (u)
+  // and across it (v), and returns a color or nothing; `outline` rings the shape with 1 hi-px.
+  function fineShape(cx, cy, reach, ang, test, outline) {
+    const c = Math.cos(ang), s = Math.sin(ang), e = 1 / RES;
+    const i0 = Math.floor((cx - reach) * RES), i1 = Math.ceil((cx + reach) * RES);
+    const j0 = Math.floor((cy - reach) * RES), j1 = Math.ceil((cy + reach) * RES);
+    for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) {
+      const wx = (i + 0.5) / RES - cx, wy = (j + 0.5) / RES - cy;
+      const u = wx * c + wy * s, v = -wx * s + wy * c;
+      let col = test(u, v);
+      if (!col && outline && (test(u + e, v) || test(u - e, v) || test(u, v + e) || test(u, v - e))) col = outline;
+      if (col) { ctx.fillStyle = col; ctx.fillRect(i / RES, j / RES, e, e); }
+    }
+  }
+  // Is (u, v) inside the triangle a-b-c?
+  function inTri(u, v, ax2, ay2, bx, by, cx, cy) {
+    const d1 = (u - bx) * (ay2 - by) - (ax2 - bx) * (v - by);
+    const d2 = (u - cx) * (by - cy) - (bx - cx) * (v - cy);
+    const d3 = (u - ax2) * (cy - ay2) - (cx - ax2) * (v - ay2);
+    return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+  }
+
   // Eight jointed legs, four per side, scuttling while the spider moves.
   function drawLegs(x, y, r, phase) {
     for (const side of [-1, 1]) {
@@ -2425,10 +2647,13 @@
         const hipX = x + Math.cos(ang) * (r - 2), hipY = y + Math.sin(ang) * (r - 2);
         const kneeX = x + Math.cos(ang) * (r + 5), kneeY = y + Math.sin(ang) * (r + 5) - 4;
         const footX = x + Math.cos(ang) * (r + 9), footY = y + Math.sin(ang) * (r + 9) + 2;
+        // thick at the hip, thin at the foot, with a dark underside, a lit knee and a dark tip
         ctx.fillStyle = '#120d19';
-        pixLine(hipX, hipY + 1, kneeX, kneeY + 1); pixLine(kneeX, kneeY + 1, footX, footY + 1);
-        ctx.fillStyle = '#4b3a62';
-        pixLine(hipX, hipY, kneeX, kneeY); pixLine(kneeX, kneeY, footX, footY);
+        fineLine(hipX, hipY + 0.5, kneeX, kneeY + 0.5, 2); fineLine(kneeX, kneeY + 0.5, footX, footY + 0.5, 1);
+        ctx.fillStyle = '#5a4874';
+        fineLine(hipX, hipY, kneeX, kneeY, 2); fineLine(kneeX, kneeY, footX, footY, 1);
+        ctx.fillStyle = '#8a76a8'; fpx(kneeX, kneeY);
+        ctx.fillStyle = '#2a2038'; fpx(footX, footY);
       }
     }
   }
@@ -2479,47 +2704,65 @@
     }
   }
 
-  // Little steel spikes around the Spike Ball's rim.
+  // Steel studs around the Spike Ball's rim, the same material as the wall spikes:
+  // a lit face, a shadow face, a dark outline and a bright tip.
   function drawStuds(x, y, r, spin) {
+    const step = Math.PI / 4;
+    fineShape(x, y, r + 5, spin, (u, v) => {
+      const k = Math.round(Math.atan2(v, u) / step), a = k * step;
+      const p = u * Math.cos(a) + v * Math.sin(a), q = -u * Math.sin(a) + v * Math.cos(a);
+      const len = (p - (r - 0.5)) / 4.5;
+      if (len < 0 || len > 1 || Math.abs(q) > 1.7 * (1 - len)) return;
+      if (len > 0.78) return '#ffffff';
+      // which half faces the light (top-left)?
+      const A = spin + a, lit = q * (-Math.sin(A) * -0.6 + Math.cos(A) * -0.7) > 0;
+      return lit ? '#e4e8ee' : '#7b828c';
+    }, '#1b1f25');
+  }
+  // A dark rivet where each stud meets the ball (drawn over the ball).
+  function drawStudRivets(x, y, r, spin) {
+    ctx.fillStyle = '#2a0d07';
     for (let i = 0; i < 8; i++) {
       const a = spin + i * Math.PI / 4;
-      const c = Math.cos(a), s = Math.sin(a);
-      for (let k = 0; k <= 4; k++) {
-        const w = k < 2 ? 1 : 0;
-        const px = x + c * (r - 1 + k), py = y + s * (r - 1 + k);
-        ctx.fillStyle = k === 4 ? '#ffffff' : '#c9ced6';
-        ctx.fillRect(Math.round(px - s * w), Math.round(py + c * w), 1, 1);
-        ctx.fillRect(Math.round(px), Math.round(py), 1, 1);
-      }
+      fpx(x + Math.cos(a) * (r - 1.2) - 0.5, y + Math.sin(a) * (r - 1.2) - 0.5, 2, 2);
     }
   }
 
-  // Two fangs on the Vampire Ball's front.
-  function drawFangs(x, y, r, face, bloody) {
-    for (const off of [-0.32, 0.32]) {
-      const a = face + off;
-      const c = Math.cos(a), s = Math.sin(a);
-      for (let k = 0; k <= 7; k++) {
-        const w = k < 3 ? 1 : k < 5 ? 0.6 : 0;
-        const px = x + c * (r - 2 + k), py = y + s * (r - 2 + k);
-        ctx.fillStyle = k >= 6 && bloody ? '#c0203a' : k === 0 ? '#9aa1ab' : '#f4f1ea';
-        ctx.fillRect(Math.round(px), Math.round(py), 1, 1);
-        if (w) {
-          ctx.fillRect(Math.round(px - s * w), Math.round(py + c * w), 1, 1);
-          ctx.fillRect(Math.round(px + s * w), Math.round(py - c * w), 1, 1);
+  // The Vampire Ball's cape collar: two pointed black wings on its back, lined in red.
+  function drawCape(x, y, r, face) {
+    fineShape(x, y, r + 6, face + Math.PI, (u, v) => {
+      for (const s of [-1, 1]) {
+        if (inTri(u, v * s, r - 3, 1, r - 3, 8, r + 4, 6.5)) {
+          return inTri(u, v * s, r - 2, 2.6, r - 2, 6.6, r + 2, 5.6) ? '#c0203a' : '#12030a';
         }
       }
-    }
+    }, '#05010a');
   }
 
-  // Glowing red eyes that look where the vampire is facing.
-  function drawVampEyes(x, y, r, face) {
-    for (const off of [-0.6, 0.6]) {
-      const a = face + off;
-      const ex = Math.round(x + Math.cos(a) * (r - 5)), ey = Math.round(y + Math.sin(a) * (r - 5));
-      ctx.fillStyle = '#ff2a3a'; ctx.fillRect(ex - 1, ey - 1, 2, 2);
-      ctx.fillStyle = '#ffd0d4'; ctx.fillRect(ex - 1, ey - 1, 1, 1);
-    }
+  // The Vampire Ball's face, turned toward its prey: a dark mouth with two fangs that
+  // reach past its rim (bloody while latched), and slanted glowing eyes.
+  function drawVampFace(x, y, r, face, bloody) {
+    const m = r - 3.5;
+    fineShape(x, y, r + 5, face, (u, v) => {
+      for (const s of [-1, 1]) {
+        const k = (u - m) / 7, dv = v - s * 1.3;
+        if (k >= 0 && k <= 1 && Math.abs(dv) <= 0.9 * (1 - k) + 0.1) {
+          if (bloody && k > 0.6) return '#c0203a';
+          return dv * s < 0 ? '#f4f1ea' : '#c9c2b4';
+        }
+      }
+      // the mouth: a dark crescent the fangs grow out of
+      if ((v / 2.6) ** 2 + ((u - m) / 1.1) ** 2 <= 1 && !((v / 2.2) ** 2 + ((u - m + 0.9) / 0.9) ** 2 < 1)) return '#12030a';
+    }, '#12030a');
+    // eyes: the brows slant down toward the middle of the face
+    const eyes = [-0.95, 0.95].map(off => ({ x: x + Math.cos(face + off) * (r - 4), y: y + Math.sin(face + off) * (r - 4) }));
+    eyes.sort((a, b) => a.x - b.x);
+    eyes.forEach((e, n) => {
+      ctx.fillStyle = '#ff2a3a'; fpx(e.x - 0.75, e.y - 0.5, 3, 2);
+      ctx.fillStyle = '#ffd0d4'; fpx(e.x - 0.75, e.y - 0.5);
+      ctx.fillStyle = '#12030a';
+      fpx(e.x - 0.75, e.y - 1 + (n ? 0.5 : 0), 1, 1); fpx(e.x - 0.25, e.y - 1, 1, 1); fpx(e.x + 0.25, e.y - 1 + (n ? 0 : 0.5), 1, 1);
+    });
   }
 
   function drawWebs() {
@@ -2565,34 +2808,52 @@
     }
   }
 
+  // A solid 1 px ring.
+  function ring(x, y, R, color) {
+    if (R < 1) return;
+    ctx.fillStyle = color;
+    const n = Math.ceil(R * 7);
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2;
+      ctx.fillRect(Math.round(x + Math.cos(a) * R), Math.round(y + Math.sin(a) * R), 1, 1);
+    }
+  }
+  // A disc whose see-through-ness is a 2x2 ordered dither instead of blending.
+  function ditherDisc(x, y, R, color, alpha) {
+    if (alpha <= 0 || R < 1) return;
+    ctx.fillStyle = color;
+    for (let dy = -Math.floor(R); dy <= R; dy++) {
+      const w = Math.floor(Math.sqrt(R * R - dy * dy)), py = Math.round(y + dy);
+      for (let px = Math.round(x - w); px <= Math.round(x + w); px++) {
+        if ((BAYER[(px & 1) + (py & 1) * 2] + 0.5) / 4 < alpha) ctx.fillRect(px, py, 1, 1);
+      }
+    }
+  }
+
   function drawEffects() {
     for (const fx of effects) {
       const k = fx.t / fx.life;
       if (fx.kind === 'boom') {
+        // layered blast: a white flash, a yellow fireball, an orange shock ring, then smoke
         const R = fx.r * Math.min(1, k * 3);
-        ctx.globalAlpha = 0.35 * (1 - k);
-        ctx.fillStyle = '#ffb03b';
-        for (let dy = -R; dy <= R; dy++) {
-          const w = Math.floor(Math.sqrt(R * R - dy * dy));
-          ctx.fillRect(Math.round(fx.x - w), Math.round(fx.y + dy), w * 2 + 1, 1);
-        }
+        if (fx.t < 0.05) ditherDisc(fx.x, fx.y, R * 0.5, '#ffffff', 1);
+        ditherDisc(fx.x, fx.y, R * 0.75, '#ffe14d', Math.max(0, 0.6 - k * 1.2));
         ctx.globalAlpha = 1 - k;
-        for (let i = 0; i < 64; i++) {
-          const a = i / 64 * Math.PI * 2;
-          ctx.fillStyle = i % 2 ? '#fff3b0' : '#ff5a1f';
-          ctx.fillRect(Math.round(fx.x + Math.cos(a) * R), Math.round(fx.y + Math.sin(a) * R), 2, 2);
+        ring(fx.x, fx.y, R, '#ff8a3d');
+        ring(fx.x, fx.y, R - 1, '#fff3b0');
+        ctx.globalAlpha = 1;
+        for (let i = 0; i < 5; i++) {
+          // smoke puffs at fixed spots around the blast, drifting up as they fade
+          const a = i * 2.4 + fx.x * 0.1, d = fx.r * (0.3 + (i % 3) * 0.15);
+          ditherDisc(fx.x + Math.cos(a) * d, fx.y + Math.sin(a) * d - k * 10, 3 + (i % 4), '#8a2a12', 0.6 * (1 - k) * Math.min(1, k * 4));
         }
       } else if (fx.kind === 'pulse') {
-        // magnet blast: a double blue/red ring rushing outward
+        // magnet blast: a solid red ring with a blue one inside, rushing outward
         const R = fx.r * Math.min(1, k * 2.5);
         ctx.globalAlpha = 1 - k;
-        for (let i = 0; i < 72; i++) {
-          const a = i / 72 * Math.PI * 2;
-          ctx.fillStyle = i % 2 ? '#7fb2ff' : '#ff5a5a';
-          ctx.fillRect(Math.round(fx.x + Math.cos(a) * R), Math.round(fx.y + Math.sin(a) * R), 2, 1);
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(Math.round(fx.x + Math.cos(a) * R * 0.8), Math.round(fx.y + Math.sin(a) * R * 0.8), 1, 1);
-        }
+        ring(fx.x, fx.y, R, '#ff5a5a');
+        ring(fx.x, fx.y, R * 0.8, '#7fb2ff');
+        ring(fx.x, fx.y, R * 0.8 - 1, '#ffffff');
       } else if (fx.kind === 'bolt') {
         ctx.globalAlpha = 1 - k;
         for (const [off, col] of [[1, '#6f8ff5'], [-1, '#6f8ff5'], [0, '#ffffff']]) {
@@ -2686,17 +2947,24 @@
     }
   }
 
-  // Cracks spreading over a damaged Glass Ball.
+  // Cracks spreading over a damaged Glass Ball from one impact point: white where they
+  // catch the light, with a dark pixel of shadow beside them.
   function drawCracks(b) {
     if (!b.type.glass) return;
     const n = Math.floor((1 - b.hp / b.maxHp) * 6);
-    ctx.fillStyle = '#3a7fa0';
-    for (let i = 0; i < n; i++) {
-      const a = i * 2.4 + 0.5;
-      const x1 = b.x + Math.cos(a) * 3, y1 = b.y + Math.sin(a) * 3;
-      const xm = b.x + Math.cos(a + 0.3) * (b.r * 0.6), ym = b.y + Math.sin(a + 0.3) * (b.r * 0.6);
-      const x2 = b.x + Math.cos(a - 0.1) * (b.r - 1), y2 = b.y + Math.sin(a - 0.1) * (b.r - 1);
-      pixLine(x1, y1, xm, ym); pixLine(xm, ym, x2, y2);
+    const ix = b.x + b.r * 0.35, iy = b.y - b.r * 0.3;   // the impact point
+    const inside = (px2, py2) => {
+      const dx = px2 - b.x, dy = py2 - b.y, d = Math.hypot(dx, dy), m = b.r - 1.5;
+      return d <= m ? [px2, py2] : [b.x + dx / d * m, b.y + dy / d * m];
+    };
+    for (const [col, o] of [['#3a7fa0', 0.5], ['#ffffff', 0]]) {
+      ctx.fillStyle = col;
+      for (let i = 0; i < n; i++) {
+        const a = i * 2.4 + 2.2, len = b.r * (0.55 + (i % 3) * 0.2);
+        const [xm, ym] = inside(ix + Math.cos(a) * len * 0.5, iy + Math.sin(a) * len * 0.5);
+        const [x2, y2] = inside(ix + Math.cos(a + 0.35) * len, iy + Math.sin(a + 0.35) * len);
+        fineLine(ix + o, iy + o, xm + o, ym + o); fineLine(xm + o, ym + o, x2 + o, y2 + o);
+      }
     }
   }
 
@@ -2706,12 +2974,12 @@
     const sp = Math.hypot(b.vx, b.vy) || 1;
     const ux = -b.vx / sp, uy = -b.vy / sp;   // trails opposite to its motion (straight down when still)
     const bx = ux || 0, by = (sp > 1 ? uy : 1);
-    ctx.fillStyle = '#e4e8ee';
-    let px = b.x, py = b.y + b.r;
-    for (let i = 1; i <= 10; i++) {
-      const w = Math.sin(performance.now() / 150 + i) * 1.2;
-      const nx = b.x + bx * (b.r + i * 1.5) - by * w, ny = b.y + by * (b.r + i * 1.5) + bx * w;
-      pixLine(px, py, nx, ny);
+    ctx.fillStyle = '#f4f1ee';
+    let px = b.x + bx * (b.r + 1), py = b.y + by * (b.r + 1);
+    for (let i = 1; i <= 12; i++) {
+      const w = Math.sin(performance.now() / 260 + i * 0.55) * 1.1 * (i / 12);   // a gentle sway, stronger at the end
+      const nx = b.x + bx * (b.r + 1 + i * 1.3) - by * w, ny = b.y + by * (b.r + 1 + i * 1.3) + bx * w;
+      fineLine(px, py, nx, ny);
       px = nx; py = ny;
     }
   }
@@ -2737,7 +3005,14 @@
       ctx.fillRect(x - a - 1, y - bw - 1, a * 2 + 3, bw * 2 + 3); ctx.fillRect(x - bw - 1, y - a - 1, bw * 2 + 3, a * 2 + 3);
       ctx.fillStyle = '#5ee07a';
       ctx.fillRect(x - a, y - bw, a * 2 + 1, bw * 2 + 1); ctx.fillRect(x - bw, y - a, bw * 2 + 1, a * 2 + 1);
-      ctx.fillStyle = '#ffffff'; ctx.fillRect(x - bw, y - a, 1, 1);
+      // beveled like the Healer's cross: lit top-left edges, shaded bottom-right ones
+      ctx.fillStyle = '#a8f5b8';
+      fpx(x - a, y - bw, (a * 2 + 1) * RES, 1); fpx(x - bw, y - a, (bw * 2 + 1) * RES, 1);
+      fpx(x - a, y - bw, 1, (bw * 2 + 1) * RES); fpx(x - bw, y - a, 1, (a * 2 + 1) * RES);
+      ctx.fillStyle = '#2f9e3a';
+      fpx(x - a, y + bw + 1 - 1 / RES, (a * 2 + 1) * RES, 1); fpx(x - bw, y + a + 1 - 1 / RES, (bw * 2 + 1) * RES, 1);
+      fpx(x + a + 1 - 1 / RES, y - bw, 1, (bw * 2 + 1) * RES); fpx(x + bw + 1 - 1 / RES, y - a, 1, (a * 2 + 1) * RES);
+      ctx.fillStyle = '#ffffff'; fpx(x - bw, y - a, 2, 2);
     }
   }
 
@@ -2785,16 +3060,18 @@
     }
   }
 
-  // Bomb fuse with a flickering spark; it flickers faster as it burns down.
+  // Bomb fuse: a striped rope curling right, with a four-ray spark that flickers
+  // faster as it burns down.
   function drawFuse(x, y, r, fuseLeft) {
-    ctx.fillStyle = '#c9a36b';
-    pixLine(x, y - r - 1, x + 2, y - r - 4);
-    pixLine(x + 2, y - r - 4, x + 5, y - r - 5);
+    const rope = k => Math.floor(k / 2) % 2 ? '#8a6a3a' : '#c9a36b';
+    fineLine(x + 0.5, y - r - 1, x + 1.5, y - r - 3.5, 2, rope);
+    fineLine(x + 1.5, y - r - 3.5, x + 4, y - r - 4.5, 2, rope);
     const rate = fuseLeft < 1 ? 40 : 120;
     if (Math.floor(performance.now() / rate) % 2 === 0) {
-      ctx.fillStyle = '#fff3b0'; ctx.fillRect(Math.round(x + 5), Math.round(y - r - 6), 2, 2);
-      ctx.fillStyle = '#ff8a3d'; ctx.fillRect(Math.round(x + 6), Math.round(y - r - 7), 1, 1);
-      ctx.fillRect(Math.round(x + 4), Math.round(y - r - 7), 1, 1);
+      const sx = x + 5, sy = y - r - 5;
+      ctx.fillStyle = '#ff8a3d'; fpx(sx - 2, sy); fpx(sx + 2, sy); fpx(sx, sy - 2); fpx(sx, sy + 2);
+      ctx.fillStyle = '#ffe14d'; fpx(sx - 1.5, sy, 4, 1); fpx(sx, sy - 1.5, 1, 4); fpx(sx - 0.5, sy, 4, 1); fpx(sx, sy - 0.5, 1, 4);
+      ctx.fillStyle = '#ffffff'; fpx(sx - 0.5, sy - 0.5, 2, 2);
     }
   }
 
@@ -2815,22 +3092,28 @@
     }
   }
 
-  // Shimmering hex-dotted bubble around a shielded ball.
+  // A shimmering hex-lattice bubble around a shielded ball.
   function drawShield(b) {
     if (!b.alive || !b.shielded) return;
     const R = b.r + 4;
-    const pulse = 0.8 + Math.sin(performance.now() / 180) * 0.2;
-    for (let i = 0; i < 48; i++) {
-      const a = i / 48 * Math.PI * 2;
-      ctx.globalAlpha = pulse * (i % 4 === 0 ? 1 : 0.6);
-      ctx.fillStyle = i % 4 === 0 ? '#ffffff' : '#7fc8ff';
-      ctx.fillRect(Math.round(b.x + Math.cos(a) * R), Math.round(b.y + Math.sin(a) * R), 1, 1);
-    }
+    const now = performance.now();
+    const pulse = 0.8 + Math.sin(now / 180) * 0.2;
     ctx.globalAlpha = 0.2;
     ctx.fillStyle = '#7fc8ff';
     for (let dy = -R; dy <= R; dy++) {
       const w = Math.floor(Math.sqrt(R * R - dy * dy));
       ctx.fillRect(Math.round(b.x - w), Math.round(b.y + dy), w * 2 + 1, 1);
+    }
+    // two hexagons, a turned inner one and an outer one, with bright corners
+    const spin = now / 2000;
+    for (const [rr, off, col, al] of [[R, 0, '#7fc8ff', 0.9], [R - 3, Math.PI / 6, '#7fc8ff', 0.45]]) {
+      ctx.globalAlpha = pulse * al;
+      const pts = [];
+      for (let i = 0; i < 6; i++) { const a = spin + off + i * Math.PI / 3; pts.push([b.x + Math.cos(a) * rr, b.y + Math.sin(a) * rr]); }
+      ctx.fillStyle = col;
+      pts.forEach((pt, i) => pixLine(pt[0], pt[1], pts[(i + 1) % 6][0], pts[(i + 1) % 6][1]));
+      ctx.fillStyle = '#ffffff';
+      for (const pt of pts) ctx.fillRect(Math.round(pt[0]), Math.round(pt[1]), 1, 1);
     }
     ctx.globalAlpha = 1;
   }
@@ -2892,10 +3175,10 @@
   function drawAxe(x, y, angle, alpha = 1, scale = 1) {
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.translate(Math.round(x), Math.round(y));
+    ctx.translate(snap(x), snap(y));
     ctx.rotate(angle);
     ctx.scale(scale, scale);
-    ctx.drawImage(axeSprite, 0, -Math.round(AXE_PIVOT_Y));
+    ctx.drawImage(axeSprite, 0, -AXE_PIVOT_Y, AXE_W, AXE_H);   // world size; the pixels are RES x finer
     ctx.restore();
   }
 
@@ -2911,7 +3194,7 @@
       }
     }
     if (b.type.studs && b.alive) drawStuds(b.x, b.y, b.r, performance.now() / 600);
-    if (b.type.fangs && b.alive) drawFangs(b.x, b.y, b.r, b.face, !!b.latch);
+    if (b.type.fangs && b.alive) drawCape(b.x, b.y, b.r, b.face);
     if (b.type.legs && b.alive) {
       const moving = b.stuck > 0 ? 0 : Math.hypot(b.vx, b.vy);
       drawLegs(b.x, b.y, b.r, performance.now() / 1000 * (4 + moving * 0.12));
@@ -2941,25 +3224,65 @@
     drawAxe(b.x, b.y, b.angle);
   }
 
-  function drawBall(b) {
+  // A soft ground shadow under a ball, tinted toward its side's color.
+  function drawShadow(b, s) {
+    const cx = b.x + 1, cy = b.y + b.r - 0.5, rx = b.r * s, ry = 1.5;
+    for (let j = -ry * RES; j < ry * RES; j++) {
+      const dy = (j + 0.5) / RES, w = rx * Math.sqrt(Math.max(0, 1 - (dy / ry) ** 2));
+      if (w <= 0) continue;
+      const x0 = snap(cx - w), x1 = snap(cx + w);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(x0, cy + j / RES, x1 - x0, 1 / RES);
+      ctx.fillStyle = b.side === 0 ? 'rgba(255,90,90,0.18)' : 'rgba(255,210,63,0.18)'; ctx.fillRect(x0, cy + j / RES, x1 - x0, 1 / RES);
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    fpx(cx - rx * 0.6, cy - 0.5 / RES, rx * 1.2 * RES, 1);   // darker core
+  }
+
+  // The side marker: a small chevron pointing down at the ball, in the side's color.
+  function drawMarker(b) {
+    const cx = b.x, cy = b.y - b.r - (b.type.cap ? 8 : b.type.cross ? 5 : 3.5);   // clear of a fuse or halo
+    fineShape(cx, cy, 4, 0, (u, v) => v >= -1.5 && v <= 1.5 && Math.abs(u) <= 2.5 * (1.5 - v) / 3 + 0.01 ? SIDES[b.side].color : null, '#0a1020');
+  }
+
+  // HP number color: white when healthy, yellow when hurt, red when nearly done.
+  function hpColor(b) {
+    const pct = b.hp / b.maxHp;
+    return pct > 0.5 ? '#ffffff' : pct >= 0.25 ? '#ffe14d' : '#ff6b6b';
+  }
+
+  function drawBall(b, tint) {
     if (!b.alive) return;
-    const spr = b.type.sprite;
+    let spr = spriteFor(b.type, b.r);
+    if (tint) spr = tinted(spr, tint);
     const wobble = b.type.slime ? Math.sin(performance.now() / 120 + b.x * 0.1) * 0.06 : 0;   // slimes jiggle
     const s = 1 + b.squash * 1.2 + wobble;
-    const k = b.r / b.type.radius;   // split slimes are smaller
-    const w = Math.round(spr.width * s * k), h = Math.round(spr.height / s * k);
-    const x = Math.round(b.x - w / 2), y = Math.round(b.y - h / 2);
-    // ground shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.fillRect(Math.round(b.x - b.r + 2), Math.round(b.y + b.r - 1), b.r * 2 - 2, 2);
+    const k = b.r / Math.max(4, Math.round(b.r));   // the sprite is cached at a whole radius
+    const w = snap(spr.size * s * k), h = snap(spr.size / s * k);
+    const x = snap(b.x - w / 2), y = snap(b.y - h / 2);
+    drawShadow(b, s);
     ctx.drawImage(spr, x, y, w, h);
-    if (b.type.fangs) drawVampEyes(b.x, b.y, b.r, b.face);
+    const now = performance.now();
+    if (b.type.studs) drawStudRivets(b.x, b.y, b.r, now / 600);
+    if (b.type.fangs) drawVampFace(b.x, b.y, b.r, b.face, !!b.latch);
     drawCracks(b);
-    // side marker ring dot
-    ctx.fillStyle = SIDES[b.side].color;
-    ctx.fillRect(Math.round(b.x) - 1, Math.round(b.y - b.r - 3), 3, 2);
-    // HP number in the middle of the ball
-    drawTextCentered(Math.ceil(b.hp), b.x + 1, Math.round(b.y) - 2, '#ffffff', 1, '#1a2233');
+    if (b.type.rng && b.rngSpin > 0) {
+      // slot machine: the chip's inserts light up one after another while it rolls
+      const i = Math.floor(now / 60) % 8, a = i * Math.PI / 4 + Math.PI / 8, rr = b.r * 10.1 / 12;
+      ctx.fillStyle = '#ffe14d';
+      fpx(b.x + Math.cos(a) * rr - 0.75, b.y + Math.sin(a) * rr - 0.75, 3, 3);
+    }
+    if (b.phased) {
+      // wisps drifting up off a faded ghost
+      ctx.fillStyle = '#e6e0f5';
+      for (let i = 0; i < 3; i++) {
+        const t = (now / 900 + i / 3) % 1;
+        fpx(b.x + Math.sin(t * 6 + i * 2) * 3 + (i - 1) * 5, b.y + b.r - 2 - t * 12, 1, 2);
+      }
+    }
+    drawMarker(b);
+    // HP number in the middle of the ball (the WCD ball prints it dark, like a bingo ball)
+    if (b.type.bingo) drawTextCentered(Math.ceil(b.hp), b.x, b.y - 2.5, '#0a1020', 1, null, true);
+    else drawTextCentered(Math.ceil(b.hp), b.x, b.y - 2.5, hpColor(b), 1, '#1a2233', true);
     if (b.type.rng) drawRngBadge(b);
   }
 
@@ -2967,9 +3290,10 @@
   function drawRngBadge(b) {
     const spinning = b.rngSpin > 0;
     const shown = spinning ? randInt(b.type.rng.min, b.type.rng.max) : b.rngValue;
-    const bx = Math.round(b.x) - 7, by = Math.round(b.y - b.r) - 14;
+    const bx = Math.round(b.x) - 7, by = Math.round(b.y - b.r) - 16;
     ctx.fillStyle = '#0a1020'; ctx.fillRect(bx - 1, by - 1, 16, 11);
     ctx.fillStyle = spinning ? '#ffffff' : '#d9a520'; ctx.fillRect(bx, by, 14, 9);
+    ctx.fillStyle = spinning ? '#ffffff' : '#fff3b0'; ctx.fillRect(bx, by, 14, 1);
     ctx.fillStyle = '#1a1430'; ctx.fillRect(bx + 1, by + 1, 12, 7);
     drawTextCentered(shown, bx + 7.5, by + 2, spinning ? '#ffffff' : rngColor(shown), 1, null);
   }
@@ -2977,6 +3301,17 @@
   // Flash tint needs its own buffer so it only tints the ball.
   const tintBuf = document.createElement('canvas');
   const tctx = tintBuf.getContext('2d');
+  function tinted(spr, color) {
+    tintBuf.width = spr.width; tintBuf.height = spr.height;   // resets the context
+    tctx.imageSmoothingEnabled = false;
+    tctx.drawImage(spr, 0, 0);
+    tctx.globalCompositeOperation = 'source-atop';
+    tctx.fillStyle = color;
+    tctx.fillRect(0, 0, spr.width, spr.height);
+    tctx.globalCompositeOperation = 'source-over';
+    tintBuf.size = spr.size;   // world size travels with the pixels
+    return tintBuf;
+  }
   function drawBallWithFlash(b) {
     if (!b.alive) return;
     if (b.phased) {
@@ -2987,49 +3322,59 @@
       ctx.restore();
       return;
     }
-    if (b.flash <= 0) return drawBall(b);
-    const spr = b.type.sprite;
-    tintBuf.width = spr.width; tintBuf.height = spr.height;
-    tctx.drawImage(spr, 0, 0);
-    tctx.globalCompositeOperation = 'source-atop';
-    tctx.fillStyle = 'rgba(255,70,70,0.75)';
-    tctx.fillRect(0, 0, spr.width, spr.height);
-    tctx.globalCompositeOperation = 'source-over';
-    const original = b.type.sprite;
-    b.type.sprite = tintBuf;
-    const f = b.flash; b.flash = 0;
+    if (b.flash > 0.12) return drawBall(b, 'rgba(255,255,255,0.9)');   // the hit frame: a white silhouette
+    if (b.flash > 0) return drawBall(b, 'rgba(255,70,70,0.75)');
+    if (b.type.bomb && b.fuse < 1 && Math.floor(performance.now() / 80) % 2) return drawBall(b, 'rgba(255,40,40,0.35)');
     drawBall(b);
-    b.flash = f;
-    b.type.sprite = original;
   }
 
+  // Each side's panel sits on a dark plate so it reads over the clouds. The plate is sized
+  // from what the panel held last frame (its lines come and go).
+  const panelBox = [{ w: 72, bottom: 100 }, { w: 72, bottom: 100 }];
   function drawPanel(ball, x, alignRight) {
     const side = SIDES[ball.side];
     const t = ball.type;
-    drawText(t.name, alignRight ? x - textWidth(t.name) : x, 6, side.color);   // the title is the ball's name
-    // ball icon (with its weapon)
-    const ix = alignRight ? x - t.sprite.width : x;
-    if (t.weapon) {
-      const icx = ix + t.radius, icy = 16 + t.radius;
-      drawAxe(icx, icy, alignRight ? Math.PI + 0.25 : -0.25);
+    const box = panelBox[ball.side], used = { w: 64, bottom: 60 };
+    const text = (str, tx, ty, col) => {
+      used.w = Math.max(used.w, textWidth(String(str)));
+      used.bottom = Math.max(used.bottom, ty + 5);
+      drawText(str, tx, ty, col);
+    };
+    {
+      const bx0 = alignRight ? x - box.w - 4 : x - 4, bw0 = box.w + 8, by0 = 2, bh0 = box.bottom + 3 - by0;
+      ctx.fillStyle = 'rgba(10,16,32,0.55)'; ctx.fillRect(bx0 + 1, by0, bw0 - 2, bh0); ctx.fillRect(bx0, by0 + 1, bw0, bh0 - 2);
+      ctx.fillStyle = '#30487a';
+      ctx.fillRect(bx0 + 1, by0, bw0 - 2, 1); ctx.fillRect(bx0 + 1, by0 + bh0 - 1, bw0 - 2, 1);
+      ctx.fillRect(bx0, by0 + 1, 1, bh0 - 2); ctx.fillRect(bx0 + bw0 - 1, by0 + 1, 1, bh0 - 2);
     }
-    if (t.legs) drawLegs(ix + t.radius, 16 + t.radius, t.radius, performance.now() / 250);
-    if (t.studs) drawStuds(ix + t.radius, 16 + t.radius, t.radius, performance.now() / 600);
+    text(t.name, alignRight ? x - textWidth(t.name) : x, 6, side.color);   // the title is the ball's name
+    // ball icon (with its weapon)
+    const ix = alignRight ? x - (t.radius * 2 + 1) : x;
+    const icx = ix + t.radius + 0.5, icy = 16 + t.radius + 0.5, now = performance.now();
+    if (t.weapon) drawAxe(icx, icy, alignRight ? Math.PI + 0.25 : -0.25);
+    if (t.legs) drawLegs(icx, icy, t.radius, now / 250);
+    if (t.studs) drawStuds(icx, icy, t.radius, now / 600);
     const iconFace = alignRight ? Math.PI : 0;
-    if (t.fangs) drawFangs(ix + t.radius, 16 + t.radius, t.radius, iconFace, false);
-    if (t.cap) drawFuse(ix + t.radius, 16 + t.radius, t.radius, 9);
-    if (t.gun) drawGun(ix + t.radius, 16 + t.radius, t.radius, alignRight ? Math.PI : 0, 0);
-    ctx.drawImage(t.sprite, ix, 16);
-    if (t.fangs) drawVampEyes(ix + t.radius, 16 + t.radius, t.radius, iconFace);
+    if (t.fangs) drawCape(icx, icy, t.radius, iconFace);
+    if (t.cap) drawFuse(icx, icy, t.radius, 9);
+    if (t.gun) drawGun(icx, icy, t.radius, alignRight ? Math.PI : 0, 0);
+    drawSprite(t.sprite, icx, icy);
+    if (t.studs) drawStudRivets(icx, icy, t.radius, now / 600);
+    if (t.fangs) drawVampFace(icx, icy, t.radius, iconFace, false);
     // hp bar
     const bw = 60, bx = alignRight ? x - bw : x, by = 46;
     ctx.fillStyle = '#0a1020'; ctx.fillRect(bx - 1, by - 1, bw + 2, 6);
     ctx.fillStyle = '#3a2030'; ctx.fillRect(bx, by, bw, 4);
     const pct = ball.hp / ball.maxHp;
-    ctx.fillStyle = pct > 0.5 ? '#5ee07a' : pct > 0.25 ? '#ffd23f' : '#ff4f4f';
-    ctx.fillRect(bx, by, Math.round(bw * pct), 4);
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.fillRect(bx, by, Math.round(bw * pct), 1);
+    // damage taken lingers as a red segment for a moment, then drains away (display only)
+    if (ball.hpTrail === undefined || ball.hp > ball.hpTrail) ball.hpTrail = ball.hp;
+    if (ball.hp !== ball.hpSeen) { ball.hpSeen = ball.hp; ball.hpHitAt = now; }
+    if (now - ball.hpHitAt > 300) ball.hpTrail = Math.max(ball.hp, ball.hpTrail - ball.maxHp * 0.012);
+    const fillW = Math.round(bw * pct), trailW = Math.round(bw * ball.hpTrail / ball.maxHp);
+    if (trailW > fillW) { ctx.fillStyle = '#ff4f4f'; ctx.fillRect(bx + fillW, by, trailW - fillW, 4); }
+    const [fillC, topC] = pct > 0.5 ? ['#5ee07a', '#a8f5b8'] : pct > 0.25 ? ['#ffd23f', '#fff3a0'] : ['#ff4f4f', '#ff9a9a'];
+    ctx.fillStyle = fillC; ctx.fillRect(bx, by, fillW, 4);
+    ctx.fillStyle = topC; ctx.fillRect(bx, by, fillW, 1);
     // a tank marks where its shield comes up
     if (t.shield && !ball.shielded) {
       const sx = bx + Math.round(bw * t.shield.at / ball.maxHp);
@@ -3042,17 +3387,17 @@
       ctx.fillStyle = '#d6a8ff'; ctx.fillRect(tx, by - 2, 1, 8);
     }
     const hpText = Math.ceil(ball.hp) + '/' + ball.maxHp;
-    drawText(hpText, alignRight ? x - textWidth(hpText) : x, 53, '#cfe0ff');
+    text(hpText, alignRight ? x - textWidth(hpText) : x, 53, '#cfe0ff');
     if (t.weapon) {
       const mult = 'AXE SPEED X' + (Math.abs(ball.spin) / t.weapon.spinStart).toFixed(1);
-      drawText(mult, alignRight ? x - textWidth(mult) : x, 61, '#ffb03b');
+      text(mult, alignRight ? x - textWidth(mult) : x, 61, '#ffb03b');
     }
     let line = 61;
     if (t.weapon) line += 8;
     if (t.spikes) {
       const n = spikes.filter(sp => sp.owner === ball).length;
       const txt = 'SPIKES ' + n + '/' + t.spikes.max;
-      drawText(txt, alignRight ? x - textWidth(txt) : x, line, '#e4e8ee');
+      text(txt, alignRight ? x - textWidth(txt) : x, line, '#e4e8ee');
       line += 8;
     }
     const info = [];
@@ -3072,7 +3417,7 @@
     if (t.wcd && grid) info.push(['BOXES LEFT ' + grid.cells.filter(c => !c.used).length + '/25', '#9fc4ff']);
     if (t.magnet) info.push(ball.pulling ? ['PULLING - BLAST IN ' + Math.max(0, ball.magT).toFixed(1) + 'S', '#7fb2ff'] : ['PULL IN ' + Math.max(0, ball.magT).toFixed(1) + 'S', '#ff7a7a']);
     if (t.glass) info.push(['SHARDS ' + shards.filter(sh => sh.owner === ball).length + '/' + t.glass.max, '#bfeeff']);
-    if (t.balloon) info.push(['SIZE ' + Math.round(ball.inflate * 100) + '%  HIT ' + baseDamagePreview(ball), '#ff8a95']);
+    if (t.balloon) info.push(['SIZE ' + Math.round(ball.inflate * 100) + '%  HIT ' + baseDamagePreview(ball), '#ff8ac0']);
     if (ball.bleed > 0) info.push(['BLEEDING ' + ball.bleed.toFixed(1) + 'S', '#ff4f6d']);
     if (t.healer) info.push(['HEALS ' + heals.filter(h => h.owner === ball).length + '/' + t.healer.max, '#5ee07a']);
     if (t.chains) {
@@ -3083,48 +3428,49 @@
     if (t.shocker) info.push(ball.charged > 0 ? ['CHARGED ' + ball.charged.toFixed(1) + 'S', '#ffffff'] : ['CHARGE IN ' + Math.max(0, ball.shockT).toFixed(1) + 'S', '#7fd8ff']);
     if (ball.chill > 0) info.push(['SLOWED ' + ball.chill.toFixed(1) + 'S', '#9fe3f5']);
     for (const [txt, col] of info) {
-      drawText(txt, alignRight ? x - textWidth(txt) : x, line, col);
+      text(txt, alignRight ? x - textWidth(txt) : x, line, col);
       line += 8;
     }
     if (t.vampire) {
       const txt = ball.latch ? 'DRAINING ' + Math.max(0, ball.latch.t).toFixed(1) + 'S'
         : ball.latchCd > 0 ? 'BITE IN ' + ball.latchCd.toFixed(1) + 'S' : 'BITE READY';
-      drawText(txt, alignRight ? x - textWidth(txt) : x, line, ball.latch ? '#ff4f6d' : '#d9a0b4');
+      text(txt, alignRight ? x - textWidth(txt) : x, line, ball.latch ? '#ff4f6d' : '#d9a0b4');
       line += 8;
     }
     if (t.shield) {
       const txt = ball.shielded ? 'SHIELD -' + Math.round(t.shield.reduction * 100) + '% DMG' : 'SHIELD AT ' + t.shield.at + ' HP';
-      drawText(txt, alignRight ? x - textWidth(txt) : x, line, ball.shielded ? '#7fc8ff' : '#9fb6dc');
+      text(txt, alignRight ? x - textWidth(txt) : x, line, ball.shielded ? '#7fc8ff' : '#9fb6dc');
       line += 8;
       if (ball.shielded && t.shield.damageBoost) {
         const hit = 'HIT ' + Math.round(t.damage * (1 + t.shield.damageBoost)) + ' +' + Math.round(t.shield.damageBoost * 100) + '%';
-        drawText(hit, alignRight ? x - textWidth(hit) : x, line, '#ff8a8a');
+        text(hit, alignRight ? x - textWidth(hit) : x, line, '#ff8a8a');
         line += 8;
       }
     }
     if (t.execute) {
       const txt = 'EXECUTE <' + Math.round(t.execute.below * 100) + '%';
-      drawText(txt, alignRight ? x - textWidth(txt) : x, line, '#d6a8ff');
+      text(txt, alignRight ? x - textWidth(txt) : x, line, '#d6a8ff');
       line += 8;
     }
     if (t.rng) {
       const txt = ball.rngSpin > 0 ? 'ROLLING ' + ball.rngSpin.toFixed(1) + 'S' : 'NEXT HIT ' + ball.rngValue;
-      drawText(txt, alignRight ? x - textWidth(txt) : x, line, ball.rngSpin > 0 ? '#ffffff' : rngColor(ball.rngValue));
+      text(txt, alignRight ? x - textWidth(txt) : x, line, ball.rngSpin > 0 ? '#ffffff' : rngColor(ball.rngValue));
       line += 8;
     }
     if (t.web) {
       const mine = webs ? webs.filter(wb => wb.owner === ball).length : 0;
       const webText = 'WEBS ' + mine + '/' + t.web.max + (ball.strand ? ' +SPINNING' : '');
-      drawText(webText, alignRight ? x - textWidth(webText) : x, line, '#e6e9f2');
+      text(webText, alignRight ? x - textWidth(webText) : x, line, '#e6e9f2');
       line += 8;
     }
     const speed = ball.stuck > 0 ? 'STUNNED ' + ball.stuck.toFixed(1) + 'S'
       : 'SPEED X' + (Math.hypot(ball.vx, ball.vy) / ballSpeed(ball)).toFixed(1);
-    drawText(speed, alignRight ? x - textWidth(speed) : x, line, ball.stuck > 0 ? '#ffffff' : '#9fe6ff');
+    text(speed, alignRight ? x - textWidth(speed) : x, line, ball.stuck > 0 ? '#ffffff' : '#9fe6ff');
     if (state === 'aim') {
       const hint = 'CLICK TO CHANGE';
-      drawText(hint, alignRight ? x - textWidth(hint) : x, 94, '#9fb6dc');
+      text(hint, alignRight ? x - textWidth(hint) : x, 94, '#9fb6dc');
     }
+    box.w = used.w; box.bottom = used.bottom;
   }
 
   function drawAimArrow(me) {
@@ -3161,7 +3507,7 @@
     if (t.wcd) return ['BOX 1-75', '#9fc4ff'];
     if (t.magnet) return ['PULL+BLAST', '#7fb2ff'];
     if (t.glass) return ['BLEED ' + t.glass.bleedDamage, '#ff4f6d'];
-    if (t.balloon) return ['INFLATES', '#ff8a95'];
+    if (t.balloon) return ['INFLATES', '#ff8ac0'];
     if (t.weapon) return ['AXE ' + t.weapon.damage, '#ffb03b'];
     if (t.web) return ['WEB DMG ' + t.web.damage, '#e6e9f2'];
     if (t.shield) return ['SHLD ' + Math.round(t.shield.reduction * 100) + '%', '#7fc8ff'];
@@ -3238,23 +3584,37 @@
       // ball (with weapon) on the left; smaller on compact cards
       const compact = c.h < 30;
       const k = compact ? 0.8 : 1;
-      const cx = c.x + (compact ? 13 : 16), cy = y + Math.floor(c.h / 2) + (compact ? 1 : 0);
+      const bob = hot && Math.floor(performance.now() / 250) % 2 ? -1 : 0;   // the hovered ball bobs
+      const cx = c.x + (compact ? 13 : 16), cy = y + Math.floor(c.h / 2) + (compact ? 1 : 0) + bob;
       const rr = t.radius * k;
       ctx.save();
       ctx.beginPath(); ctx.rect(c.x, y, compact ? 26 : 32, c.h); ctx.clip();
+      // a portrait well in the ball's own dark color, so the grid is color-coded
+      const wr = Math.round(14 * k), wy = cy - bob;
+      for (let dy = -wr; dy <= wr; dy++) {
+        const ww = Math.floor(Math.sqrt(wr * wr - dy * dy));
+        const wo = Math.floor(Math.sqrt(Math.max(0, (wr - 1) * (wr - 1) - dy * dy)));
+        ctx.fillStyle = t.colors.rim; ctx.fillRect(cx - ww, wy + dy, ww * 2, 1);
+        ctx.fillStyle = '#0a1020'; ctx.fillRect(cx - wo, wy + dy, wo * 2, 1);
+        ctx.globalAlpha = 0.4; ctx.fillStyle = t.colors.dark; ctx.fillRect(cx - wo, wy + dy, wo * 2, 1); ctx.globalAlpha = 1;
+      }
       if (t.weapon) {
         const ang = -Math.PI * 0.75 - (hot ? performance.now() / 300 : 0);
         drawAxe(cx, cy, ang, 1, 0.5 * k);
       }
       if (t.legs) drawLegs(cx, cy, rr, hot ? performance.now() / 120 : 0);
       if (t.studs) drawStuds(cx, cy, rr, hot ? performance.now() / 300 : 0);
-      if (t.fangs) drawFangs(cx, cy, rr, 0, hot);
+      if (t.fangs) drawCape(cx, cy, rr, 0);
       if (t.cap) drawFuse(cx, cy, rr, hot ? 0.5 : 9);
       if (t.gun) drawGun(cx, cy, rr, -0.5, hot && Math.floor(performance.now() / 150) % 3 === 0 ? 1 : 0);
-      ctx.drawImage(t.sprite, Math.round(cx - rr), Math.round(cy - rr), Math.round(t.sprite.width * k), Math.round(t.sprite.height * k));
-      if (t.fangs) drawVampEyes(cx, cy, rr, 0);
+      drawSprite(t.sprite, cx, cy, k);
+      if (t.studs) drawStudRivets(cx, cy, rr, hot ? performance.now() / 300 : 0);
+      if (t.fangs) drawVampFace(cx, cy, rr, 0, hot);
       ctx.restore();
-      drawText(String(i + 1), c.x + 2, y + 2, hot ? '#ffd23f' : '#7f93b8');   // its number key
+      // its number key, on a small dark tab
+      const num = String(i + 1);
+      ctx.fillStyle = '#0a1020'; ctx.fillRect(c.x, y, textWidth(num) + 4, 8);
+      drawText(num, c.x + 2, y + 2, hot ? '#ffd23f' : '#7f93b8', 1, null);
       // stats on the right
       const hit = t.rng ? t.rng.min + '-' + t.rng.max
         : t.damageRange ? t.damageRange[0] + '-' + t.damageRange[1]
@@ -3291,6 +3651,7 @@
   }
 
   function render() {
+    ctx.setTransform(RES, 0, 0, RES, 0, 0);   // world units from here on (set, not scaled, so nothing compounds)
     ctx.fillStyle = '#0b1a33'; ctx.fillRect(0, 0, W, H);   // clear last frame (also under screen shake)
     ctx.save();
     if (shake > 0) {
@@ -3326,9 +3687,11 @@
       drawExecuteFx();
     }
     for (const p of particles) {
-      ctx.globalAlpha = 1 - p.t / p.life;
-      ctx.fillStyle = p.color;
-      ctx.fillRect(Math.round(p.x), Math.round(p.y), 2, 2);
+      // a white 1 px spark at first, then a 2 px chip of color
+      const k = p.t / p.life;
+      ctx.globalAlpha = 1 - k;
+      ctx.fillStyle = k < 0.3 ? '#ffffff' : p.color;
+      ctx.fillRect(Math.round(p.x), Math.round(p.y), k < 0.3 ? 1 : 2, k < 0.3 ? 1 : 2);
     }
     ctx.globalAlpha = 1;
     ctx.restore();
