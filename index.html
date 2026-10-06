@@ -716,7 +716,8 @@
     { label: 'CPU', color: '#ffd23f' },
   ];
 
-  let balls, popups, particles, state, winner, shake, aim, roundTimer, firstHitDone, webs;
+  let balls, popups, particles, state, winner, shake, roundTimer, firstHitDone, webs;
+  let dragging = null;   // the ball being aimed
   let executeFx = [];
   let spikes = [];
   let effects = [];   // explosions and lightning bolts
@@ -787,7 +788,6 @@
   // Pick screen, in two steps: first your ball, then the CPU's ball (or random).
   const RANDOM = 'random';
   let selectStep = 0;       // 0 = picking yours, 1 = picking the CPU's
-  let cpuRandom = true;     // was the CPU's ball left to chance?
 
   function startSelect(step = 0) {
     state = 'select';
@@ -799,19 +799,18 @@
 
   function choose(key) {
     if (selectStep === 0) {
-      picks[0] = key;
+      picks[0] = key === RANDOM ? BALL_ORDER[Math.floor(Math.random() * BALL_ORDER.length)] : key;
       selectStep = 1;
       hoverCard = -1;
       return;
     }
-    cpuRandom = key === RANDOM;
-    picks[1] = cpuRandom ? BALL_ORDER[Math.floor(Math.random() * BALL_ORDER.length)] : key;
+    picks[1] = key === RANDOM ? BALL_ORDER[Math.floor(Math.random() * BALL_ORDER.length)] : key;
     reset();
   }
 
   // What's on the pick screen right now: every ball, plus a random card for the CPU step.
   function selectKeys() {
-    return selectStep === 1 ? [...BALL_ORDER, RANDOM] : BALL_ORDER;
+    return [...BALL_ORDER, RANDOM];
   }
 
   // Card rectangles on the pick screen: a two-column grid inside the arena.
@@ -857,28 +856,42 @@
     shake = 0;
     roundTimer = 0;
     firstHitDone = false;
-    aim = { x: cx + 40, y: cy + 8 };
+    // each ball starts aimed in a random direction at normal power; drag a ball to re-aim it
+    for (const b of balls) {
+      const a = Math.random() * Math.PI * 2;
+      b.aimX = b.x + Math.cos(a) * 45;
+      b.aimY = b.y + Math.sin(a) * 45;
+    }
+    dragging = null;
   }
 
-  // Launch power comes from how far the cursor is from your ball.
-  function aimPower() {
-    const me = balls[0];
-    const len = Math.hypot(aim.x - me.x, aim.y - me.y);
+  // Launch power comes from how far the aim point is dragged from the ball.
+  function aimPower(b) {
+    const len = Math.hypot(b.aimX - b.x, b.aimY - b.y);
     return Math.max(0.6, Math.min(1.4, len / 45));
   }
 
   function launch() {
-    const [me, cpu] = balls;
-    let dx = aim.x - me.x, dy = aim.y - me.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const power = aimPower();
-    me.vx = dx / len * me.type.speed * power;
-    me.vy = dy / len * me.type.speed * power;
-    const a = Math.random() * Math.PI * 2;
-    const cpuPower = 0.7 + Math.random() * 0.6;
-    cpu.vx = Math.cos(a) * cpu.type.speed * cpuPower;
-    cpu.vy = Math.sin(a) * cpu.type.speed * cpuPower;
+    for (const b of balls) {
+      const dx = b.aimX - b.x, dy = b.aimY - b.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const power = aimPower(b);
+      b.vx = dx / len * b.type.speed * power;
+      b.vy = dy / len * b.type.speed * power;
+    }
+    dragging = null;
     state = 'fight';
+  }
+
+  // The LAUNCH button under the arena.
+  const LAUNCH_BTN = { w: 44, h: 11 };
+  LAUNCH_BTN.x = Math.round((W - LAUNCH_BTN.w) / 2);
+  LAUNCH_BTN.y = H - LAUNCH_BTN.h - 2;
+  function onLaunchBtn(p) {
+    return p.x >= LAUNCH_BTN.x && p.x < LAUNCH_BTN.x + LAUNCH_BTN.w && p.y >= LAUNCH_BTN.y && p.y < LAUNCH_BTN.y + LAUNCH_BTN.h;
+  }
+  function ballAt(p) {
+    return balls.find(b => Math.hypot(p.x - b.x, p.y - b.y) <= b.r + 6);
   }
 
   // ---------------------------------------------------------------------------
@@ -893,20 +906,29 @@
   }
   canvas.addEventListener('pointermove', e => {
     const p = toGame(e);
-    if (state === 'aim') aim = p;
+    if (state === 'aim' && dragging) { dragging.aimX = p.x; dragging.aimY = p.y; }
     hoverCard = state === 'select' ? cardAt(p) : -1;
-    canvas.style.cursor = hoverCard >= 0 ? 'pointer' : 'crosshair';
+    const grab = state === 'aim' && (dragging || ballAt(p));
+    canvas.style.cursor = dragging ? 'grabbing' : grab ? 'grab'
+      : hoverCard >= 0 || (state === 'aim' && onLaunchBtn(p)) ? 'pointer' : 'default';
   });
+  addEventListener('pointerup', () => { dragging = null; });
   canvas.addEventListener('pointerdown', e => {
     const p = toGame(e);
     if (state === 'select') {
       const i = cardAt(p);
       if (i >= 0) choose(selectKeys()[i]);
     } else if (state === 'aim') {
+      const b = ballAt(p);
+      if (b) {
+        // grab a ball and drag to aim it: direction = where you drag, power = how far
+        dragging = b;
+        canvas.setPointerCapture?.(e.pointerId);
+        b.aimX = p.x; b.aimY = p.y;
+      } else if (onLaunchBtn(p)) launch();
       // clicking a side panel goes back to that side's pick
-      if (p.x < ARENA.x - 2 && p.y < 102) startSelect(0);
+      else if (p.x < ARENA.x - 2 && p.y < 102) startSelect(0);
       else if (p.x > ARENA.x + ARENA.size + 2 && p.y < 102) startSelect(1);
-      else { aim = p; launch(); }
     } else if (state === 'over' && roundTimer > 1.2) {
       startSelect();
     }
@@ -914,7 +936,7 @@
   addEventListener('keydown', e => {
     if ((e.key === 'r' || e.key === 'R') && state !== 'select') reset();   // rematch, same balls
     if (state === 'select' && BALL_ORDER[+e.key - 1]) choose(BALL_ORDER[+e.key - 1]);
-    if (state === 'select' && selectStep === 1 && (e.key === '0' || e.key === ' ')) choose(RANDOM);
+    if (state === 'select' && (e.key === '0' || e.key === ' ')) choose(RANDOM);
     if (state === 'select' && selectStep === 1 && (e.key === 'Escape' || e.key === 'Backspace')) selectStep = 0;
     if ((e.key === ' ' || e.key === 'Enter') && state === 'aim') launch();
   });
@@ -2300,8 +2322,7 @@
   function drawPanel(ball, x, alignRight) {
     const side = SIDES[ball.side];
     const t = ball.type;
-    const nameX = alignRight ? x - textWidth(side.label) : x;
-    drawText(side.label, nameX, 8, side.color);
+    drawText(t.name, alignRight ? x - textWidth(t.name) : x, 6, side.color);   // the title is the ball's name
     // ball icon (with its weapon)
     const ix = alignRight ? x - t.sprite.width : x;
     if (t.weapon) {
@@ -2315,11 +2336,8 @@
     if (t.cap) drawFuse(ix + t.radius, 16 + t.radius, t.radius, 9);
     ctx.drawImage(t.sprite, ix, 16);
     if (t.fangs) drawVampEyes(ix + t.radius, 16 + t.radius, t.radius, iconFace);
-    // ball name
-    const lbl = t.name;
-    drawText(lbl, alignRight ? x - textWidth(lbl) : x, 44, '#ffffff');
     // hp bar
-    const bw = 60, bx = alignRight ? x - bw : x, by = 52;
+    const bw = 60, bx = alignRight ? x - bw : x, by = 46;
     ctx.fillStyle = '#0a1020'; ctx.fillRect(bx - 1, by - 1, bw + 2, 6);
     ctx.fillStyle = '#3a2030'; ctx.fillRect(bx, by, bw, 4);
     const pct = ball.hp / ball.maxHp;
@@ -2339,12 +2357,12 @@
       ctx.fillStyle = '#d6a8ff'; ctx.fillRect(tx, by - 2, 1, 8);
     }
     const hpText = Math.ceil(ball.hp) + '/' + ball.maxHp;
-    drawText(hpText, alignRight ? x - textWidth(hpText) : x, 59, '#cfe0ff');
+    drawText(hpText, alignRight ? x - textWidth(hpText) : x, 53, '#cfe0ff');
     if (t.weapon) {
       const mult = 'AXE SPEED X' + (Math.abs(ball.spin) / t.weapon.spinStart).toFixed(1);
-      drawText(mult, alignRight ? x - textWidth(mult) : x, 67, '#ffb03b');
+      drawText(mult, alignRight ? x - textWidth(mult) : x, 61, '#ffb03b');
     }
-    let line = 67;
+    let line = 61;
     if (t.weapon) line += 8;
     if (t.spikes) {
       const n = spikes.filter(sp => sp.owner === ball).length;
@@ -2411,19 +2429,19 @@
       : 'SPEED X' + (Math.hypot(ball.vx, ball.vy) / t.speed).toFixed(1);
     drawText(speed, alignRight ? x - textWidth(speed) : x, line, ball.stuck > 0 ? '#ffffff' : '#9fe6ff');
     if (state === 'aim') {
-      const hint = alignRight && cpuRandom ? 'RANDOM - CLICK' : 'CLICK TO CHANGE';
+      const hint = 'CLICK TO CHANGE';
       drawText(hint, alignRight ? x - textWidth(hint) : x, 94, '#9fb6dc');
     }
   }
 
-  function drawAimArrow() {
-    const me = balls[0];
-    let dx = aim.x - me.x, dy = aim.y - me.y;
+  function drawAimArrow(me) {
+    let dx = me.aimX - me.x, dy = me.aimY - me.y;
     const len = Math.hypot(dx, dy) || 1;
     const nx = dx / len, ny = dy / len;
-    const power = aimPower();
+    const power = aimPower(me);
     const start = me.r + 4, end = me.r + 10 + Math.round(power * 26);
-    ctx.fillStyle = power > 1.2 ? '#ffb03b' : '#ffffff';
+    // each side's arrow is in its own color; it glows white while being dragged or at full power
+    ctx.fillStyle = me === dragging || power > 1.2 ? '#ffffff' : SIDES[me.side].color;
     // dashed shaft
     for (let d = start; d < end - 6; d += 1) {
       if (Math.floor((d - start) / 4) % 2 === 1) continue;
@@ -2476,11 +2494,11 @@
     ctx.fillStyle = '#30487a';
     ctx.fillRect(6, 12, W - 12, 1); ctx.fillRect(6, H - 7, W - 12, 1);
     if (selectStep === 0) {
-      drawTextCentered('CHOOSE YOUR BALL', W / 2, 18, SIDES[0].color, 1);
-      drawTextCentered('THEN PICK THE CPU BALL', W / 2, 26, '#9fb6dc', 1);
+      drawTextCentered('CHOOSE BALL 1', W / 2, 18, SIDES[0].color, 1);
+      drawTextCentered('THEN CHOOSE BALL 2', W / 2, 26, '#9fb6dc', 1);
     } else {
-      drawTextCentered('CHOOSE THE CPU BALL', W / 2, 18, SIDES[1].color, 1);
-      drawTextCentered('YOU: ' + BALL_TYPES[picks[0]].short + '   ESC: BACK', W / 2, 26, '#9fb6dc', 1);
+      drawTextCentered('CHOOSE BALL 2', W / 2, 18, SIDES[1].color, 1);
+      drawTextCentered('BALL 1: ' + BALL_TYPES[picks[0]].short + '   ESC: BACK', W / 2, 26, '#9fb6dc', 1);
     }
     cardRects().forEach((c, i) => {
       const t = BALL_TYPES[c.key];
@@ -2571,7 +2589,7 @@
     ctx.beginPath();
     ctx.rect(PLAY.left, PLAY.top, PLAY.right - PLAY.left, PLAY.bottom - PLAY.top);
     ctx.clip();
-    if (state === 'aim') drawAimArrow();
+    if (state === 'aim') for (const b of balls) drawAimArrow(b);
     if (state !== 'select') {
       drawWebs();
       drawSpikes();
@@ -2609,15 +2627,20 @@
       drawPanel(sideBall(0), 8, false);
       drawPanel(sideBall(1), W - 8, true);
     }
-    drawTextCentered('BALL VS BALL', W / 2, 3, '#ffffff', 1);
+    drawTextCentered(state === 'aim' ? 'DRAG A BALL TO AIM IT' : 'BALL VS BALL', W / 2, 3, '#ffffff', 1);
 
     if (state === 'aim') {
       const blink = Math.floor(performance.now() / 450) % 2 === 0;
-      if (blink) drawTextCentered('CLICK TO LAUNCH', W / 2, H - 9, '#ffffff');
+      // LAUNCH button
+      const bt = LAUNCH_BTN;
+      ctx.fillStyle = '#0a1020'; ctx.fillRect(bt.x - 1, bt.y - 1, bt.w + 2, bt.h + 2);
+      ctx.fillStyle = blink ? '#ff8a3d' : '#e8692a'; ctx.fillRect(bt.x, bt.y, bt.w, bt.h);
+      ctx.fillStyle = '#ffb07a'; ctx.fillRect(bt.x, bt.y, bt.w, 1);
+      drawTextCentered('LAUNCH', W / 2, bt.y + 3, '#ffffff');
     } else if (state === 'over' && roundTimer > 0.6) {   // short pause so the final hit is visible
       ctx.fillStyle = 'rgba(8,14,30,0.55)';
       ctx.fillRect(0, H / 2 - 16, W, 30);
-      const msg = winner ? SIDES[winner.side].label + (winner.side === 0 ? ' WIN!' : ' WINS!') : 'DRAW!';
+      const msg = winner ? winner.type.name + ' WINS!' : 'DRAW!';
       const col = winner ? SIDES[winner.side].color : '#ffffff';
       drawTextCentered(msg, W / 2, H / 2 - 12, col, 3);
       if (roundTimer > 1.2) drawTextCentered('CLICK TO PICK AGAIN  -  R FOR REMATCH', W / 2, H / 2 + 7, '#cfe0ff');

@@ -2,9 +2,9 @@
 
 A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a browser.
 
-- Pick your ball (click a card or press its number), then pick the CPU's ball, or Random (key 0). Esc goes back.
-- Before launching, click either side panel to change that side's ball.
-- Aim with the mouse and click (or press Space) to launch. The farther the cursor is from your ball, the harder the launch.
+- Pick ball 1, then ball 2 (click a card or press its number; Random is key 0). Esc goes back.
+- Aim both balls by dragging on them: drag the way you want it to go, and farther for a harder launch. Then click
+  LAUNCH (or press Space). Click either side panel before launching to change that ball.
 - Balls bounce around the square arena. Every contact is one tick of each ball's damage stat.
 - Collisions use momentum, so speeds change after impacts. Faster balls ricochet into each other more often.
 - First hit: in a collision, the ball driving in harder strikes first. If that knocks the other ball out, it never hits back.
