@@ -2054,21 +2054,6 @@
     }
   }
 
-  // Head detail: a flicking forked tongue pointing where it's going.
-  function drawSnakeFace(b) {
-    if (!b.type.snake || !b.alive) return;
-    const sp = Math.hypot(b.vx, b.vy);
-    const ang = sp > 1 ? Math.atan2(b.vy, b.vx) : (b.side === 0 ? 0 : Math.PI);
-    const c = Math.cos(ang), s2 = Math.sin(ang);
-    if (Math.floor(performance.now() / 260) % 3 === 0) {
-      const tx = b.x + c * (b.r + 5), ty = b.y + s2 * (b.r + 5);
-      ctx.fillStyle = '#e8283c';
-      pixLine(b.x + c * (b.r - 1), b.y + s2 * (b.r - 1), tx, ty);
-      pixLine(tx, ty, tx + Math.cos(ang - 0.6) * 2.5, ty + Math.sin(ang - 0.6) * 2.5);
-      pixLine(tx, ty, tx + Math.cos(ang + 0.6) * 2.5, ty + Math.sin(ang + 0.6) * 2.5);
-    }
-  }
-
   // ---------------------------------------------------------------------------
   // Zone Ball: a wall-to-wall line cuts off the smaller part of the arena as a zone
   // ---------------------------------------------------------------------------
@@ -3462,7 +3447,6 @@
     const now = performance.now();
     if (b.type.studs) drawStudRivets(b.x, b.y, b.r, now / 600);
     if (b.type.fangs) drawVampFace(b.x, b.y, b.r, b.face, !!b.latch);
-    drawSnakeFace(b);
     drawCracks(b);
     if (b.type.rng && b.rngSpin > 0) {
       // slot machine: the chip's inserts light up one after another while it rolls
