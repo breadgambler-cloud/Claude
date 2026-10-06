@@ -39,7 +39,9 @@ A pixel-art take on the Roblox game *Ball vs Ball*. Open `index.html` in a brows
 | Zone Ball | 100 | 6, zones 2 every 0.5 s |
 | Snake Ball | 100 | 6, body segments 4 |
 | Hook Ball | 100 | 5, hook 3, wall slams 7 |
-| Virus Ball | 100 | 5, poison 1 per tick |
+| Virus Ball | 90 | 5, poison 1 per tick |
+| Beam Ball | 100 | 5, beam 9 |
+| Shackled Ball | 100 | 6, cage walls 5 |
 
 The Axe Ball's axe orbits around it and spins faster the longer the ball stays alive.
 When two axes meet they clang off each other and both reverse direction.
@@ -126,3 +128,11 @@ it around fast for 2.2 seconds and then flings it away. Every wall the enemy sla
 
 The Virus Ball poisons every enemy it touches. Poison slows the ball by 30% and lasts 15 ticks (one every 0.4 seconds),
 dealing 1 damage per tick. Touching the Virus Ball again while poisoned resets the count to 15.
+
+The Beam Ball's emitter tracks the enemy. Every 3 seconds it charges for 0.8 seconds (a flickering aim line shows where
+it will fire), then fires a laser straight across the arena for 9 damage. It leads its shot, aiming where the enemy is
+heading.
+
+The Shackled Ball drops red cages ringed with glowing red chain around the arena, one every 2.5 seconds (up to 3; an
+unused cage fades after 12 seconds). An enemy that rolls into a cage is trapped inside for 5 seconds. Every hit on the
+cage wall costs it 5 HP, and 3 hits break the cage open; otherwise it waits out the 5 seconds.
