@@ -206,7 +206,7 @@
       mass: 1,
       radius: 12,
       speed: 130,
-      colors: { light: '#c23a5a', base: '#7a1530', dark: '#4a0a1e', rim: '#1a0410' },
+      colors: { light: '#a8325a', base: '#5e0f2e', dark: '#3a0820', rim: '#14030c' },
       fangs: true,
       // It turns to face the enemy. Touch them with its fangs and it latches on,
       // draining HP and healing itself by the same amount.
@@ -709,21 +709,22 @@
 
     // --- body: outline, rim light, dithered sphere shading ---
     const glow = col.glow || mix(col.base, '#9fb6dc', 0.35), glowW = col.glowW || 1;
+    const rimPx = [];   // outline hi-px, kept for the hit-flash overlay
     const bodyA = col.alpha || 1;
     paint((x, y, h) => {
       if (!body(x, y)) return;
       const edge = k => !body(x + k * E, y) || !body(x - k * E, y) || !body(x, y + k * E) || !body(x, y - k * E);
-      if (edge(1)) return col.rim;
+      if (edge(1)) { rimPx.push(h.i, h.j); return col.rim; }
       // rim light: a thin band along the lower-right arc, bounced up from the floor
       const facing = (x + y) / (Math.hypot(x, y) || 1) / Math.SQRT2;
-      if (facing > 0.5 && edge(1 + glowW)) return [glow, Math.max(bodyA, 0.8)];
+      if (facing > 0.64 && edge(1 + glowW)) return [glow, Math.max(bodyA, 0.8)];   // a ~100 degree crescent
       return [h.shade(ramp), bodyA];
     }, true);
 
     if (type.equator) {
       // the reference ball: a thin seam around its middle, bowed like a sphere's equator
-      const fy = x => 4.2 + 2.6 * Math.sqrt(Math.max(0, 1 - (x / BR) ** 2));
-      paint((x, y) => curve(fy)(x, y) ? col.dark : curve(x2 => fy(x2) + E)(x, y) ? '#f4f7fb' : null);
+      const fy = x => 5 + 1 * Math.sqrt(Math.max(0, 1 - (x / BR) ** 2));
+      paint((x, y) => curve(fy)(x, y) ? col.dark : null);
     }
     if (type.seam) {
       // molten crack down the middle: white-hot core, orange sides, a soft glow and a few embers
@@ -768,25 +769,25 @@
         return (ux <= X && ux > X - L && uy <= Y && uy > Y - t) || (uy <= Y && uy > Y - L + 0.5 && ux <= X && ux > X - t);
       };
       shape(bracket, { o: '#3d0606' }, '#ffffff');
-      // hazard chevrons along the bottom arc
+      // a strip of caution tape straight across the lower-right
       paint((x, y) => {
-        const d = Math.hypot(x, y);
-        if (y < 0 || Math.abs(x) > y * 1.1 || d < BR - 3 || d > BR - 2) return;
-        return Math.floor((x + y) / 1.5) % 2 ? '#ffd23f' : '#1b1f25';
+        const across = (x + y - 14.6) / Math.SQRT2;
+        if (Math.abs(across) > 0.75 + E * 0.1) return;
+        return Math.floor((x + 40) / 1.5) % 2 ? '#ffd23f' : '#1b1f25';
       });
     }
     if (type.hat) {
       // cowboy hat: dented crown, red band, wide brim with a lit top and a dark underside
-      paint((x, y) => y > -6.8 && y < -5 && x * x + y * y < (BR - 0.5) ** 2 ? ['#2a180a', 0.35] : null);   // brim shadow on the face
+      paint((x, y) => y > -6.8 && y < -5.6 && x * x + y * y < (BR - 0.5) ** 2 ? ['#2a180a', 0.35] : null);   // brim shadow on the face
       const crown = (x, y) => box(-4.5, -12.8, 4.5, -7.5)(x, y) && !box(-1, -12.8, 1, -11.8)(x, y);
       shape(crown, { o: '#2a180a', l: '#9a6a38', d: '#4a2c12' }, (x, y) => y > -9.6 && y < -8.1 ? '#c0392b' : '#6b4220', true);
       shape(oval(0, -7.4, 11.2, 1.6), { o: '#2a180a', l: '#9a6a38', d: '#2a180a' }, '#6b4220', true);
-      for (const ex of [-2.8, 2.8]) dot(ex, -4.4, 3, 1, '#2a180a');   // squinting eyes
+      for (const ex of [-2.8, 2.8]) { dot(ex, -4.6, 3, 1, '#2a180a'); dot(ex, -5.4, 3, 1, '#5a3a1a'); }   // squinting eyes under brows
       // bandana over the lower face, with white dots
       const scarf = poly([[-8.6, 7.2], [8.6, 7.2], [0, 12.9]]);
       shape(scarf, { o: '#5a120c', d: '#8a2418' }, (x, y) => (Math.round(x * 1.2) + Math.round(y * 1.2)) % 4 === 0 && y < 10.5 ? '#ffd0c0' : '#c0392b');
-      // gold sheriff star on one side
-      pat(-8.6, 1.4, ['...o...', '..oYo..', 'ooYWYoo', 'oYYYYYo', '.oYYYo.', '.oYoYo.', '.o...o.'],
+      // gold sheriff star on the right cheek
+      pat(8.4, 1.4, ['...o...', '..oYo..', 'ooYWYoo', 'oYYYYYo', '.oYYYo.', '.oYoYo.', '.o...o.'],
         { o: '#5a3a0a', Y: '#ffd23f', W: '#fff3b0' });
       spec = null;
     }
@@ -800,7 +801,7 @@
         return h.shade(['#3f80ec', '#2f6fdc', '#2a62c6', '#2350a8']);
       });
       shape(oval(0, 0, 7, 7), { o: '#1f3a8a', d: '#dfe4ee' }, '#ffffff');
-      pat(0, -4.9, ['oo.', 'o.o', 'oo.', 'o.o', 'oo.'], { o: '#2f6fdc' });
+      dot(0, -6.1, 2, 1, '#1f3a8a'); dot(0, 6.1, 2, 1, '#1f3a8a');   // print marks at 12 and 6 o'clock
     }
     if (type.horseshoe) {
       // a horseshoe magnet opening upward, its legs either side of the HP number
@@ -928,12 +929,14 @@
       pat(-8.4, 0.4, ['...W...', '...W...', 'WWWWWWW', '.WWWWW.', '..WWW..', '.WW.WW.', 'W.....W'], { W: '#e8ecd8' });
     }
     if (type.sigil) {
-      // a faceted 4-point crystal star framing a clear middle for the HP number
-      const lens = (x, y, k) => (x / (PLATE.w + k)) ** 2 + (y / (PLATE.h + k)) ** 2 <= 1;
-      const star = (x, y) => (Math.abs(x) ** 0.7 + Math.abs(y) ** 0.7 <= 11 ** 0.7 || lens(x, y, 2.4)) && !lens(x, y, 1);
+      // a fat faceted 4-point crystal star; its middle sits under the HP number's plate, so each tip
+      // carries a pink-white sparkle that keeps the icon readable
+      const W2 = 4.2, T = 11.2;
+      const star = poly([[0, -T], [W2, -W2], [T, 0], [W2, W2], [0, T], [-W2, W2], [-T, 0], [-W2, -W2]]);
       shape(star, { o: '#1c0838' }, (x, y) => x < 0 && y < 0 ? '#e8c8ff' : x >= 0 && y < 0 ? '#b57cf2' : x < 0 ? '#8a4fd6' : '#5b2a9e');
-      // a bright ridge down the middle of each point
-      paint((x, y) => star(x, y) && !lens(x, y, 2.6) && (Math.abs(x) < E / 2 + 0.01 || Math.abs(y) < E / 2 + 0.01) ? '#ffffff' : null);
+      for (const [sx, sy] of [[0, -8.4], [8.6, 0], [0, 8.4], [-8.6, 0]]) {
+        pat(sx, sy, ['..p..', '..p..', 'ppwpp', '..p..', '..p..'], { p: '#ff9cf5', w: '#ffffff' });
+      }
     }
     if (type.pips) {
       // a casino chip: white inserts around the rim and a dashed inner ring
@@ -973,6 +976,12 @@
       else { dot(sx, sy, 4, 2, '#ffffff'); dot(sx, sy, 2, 3, '#ffffff'); dot(sx + 3 * E, sy - 2 * E, 1, 1, '#ffffff'); }
     }
     g.putImageData(img, 0, 0);
+    // the outline alone, laid back over a tinted flash so the silhouette stays dark
+    c.outline = document.createElement('canvas');
+    c.outline.width = c.outline.height = D;
+    const og = c.outline.getContext('2d');
+    og.fillStyle = type.glint ? '#3a7fa0' : col.rim;
+    for (let k = 0; k < rimPx.length; k += 2) og.fillRect(rimPx[k], rimPx[k + 1], 1, 1);
     return c;
   }
   // Sprites are cached per whole radius, so split slimes and inflating balloons get
@@ -1063,6 +1072,7 @@
   let grid = null;   // the WCD ball's numbered grid: {cells: [{n, used}]}
   const picks = ['normal', 'normal'];   // ball type for YOU and CPU
   let hoverCard = -1;
+  let popSide = 1;   // which side the next damage number pops out on
 
   function makeBall(typeKey, x, y, side) {
     const t = BALL_TYPES[typeKey];
@@ -1351,7 +1361,8 @@
     }
     ball.hp = Math.max(0, ball.hp - amount);
     ball.flash = 0.15;
-    popups.push({ x: ball.x, y: ball.y - ball.r - 4, text: '-' + amount, t: 0, color });
+    popSide = -popSide;   // display only: alternate sides so quick hits don't stack
+    popups.push({ x: ball.x + popSide * 4, y: ball.y - ball.r - 9, text: '-' + amount, t: 0, color });
     const sh = ball.type.shield;
     if (sh && !ball.shielded && ball.hp > 0 && ball.hp <= sh.at) {
       ball.shielded = true;
@@ -1983,10 +1994,7 @@
       // hazard dashes along the cutting line
       ctx.globalAlpha = 0.9 * fade;
       const dx = z.b.x - z.a.x, dy = z.b.y - z.a.y, len = Math.hypot(dx, dy) || 1;
-      for (let d2 = 0; d2 < len; d2 += 2) {
-        ctx.fillStyle = Math.floor(d2 / 4) % 2 ? '#ffffff' : '#ff4f4f';
-        ctx.fillRect(Math.round(z.a.x + dx / len * d2), Math.round(z.a.y + dy / len * d2), 1, 1);
-      }
+      fineLine(z.a.x, z.a.y, z.b.x, z.b.y, 2, k => Math.floor(k / 4) % 2 ? '#ffffff' : '#ff4f4f');
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(Math.round(z.a.x) - 1, Math.round(z.a.y) - 1, 3, 3);
       ctx.fillRect(Math.round(z.b.x) - 1, Math.round(z.b.y) - 1, 3, 3);
@@ -2728,31 +2736,36 @@
     }
   }
 
-  // The Vampire Ball's cape collar: two pointed black wings on its back, lined in red.
+  // The Vampire Ball's cape collar: one wide flared collar around its back with three
+  // points (the middle one shortest), black with a red lining along its inner edge.
   function drawCape(x, y, r, face) {
-    fineShape(x, y, r + 6, face + Math.PI, (u, v) => {
-      for (const s of [-1, 1]) {
-        if (inTri(u, v * s, r - 3, 1, r - 3, 8, r + 4, 6.5)) {
-          return inTri(u, v * s, r - 2, 2.6, r - 2, 6.6, r + 2, 5.6) ? '#c0203a' : '#12030a';
-        }
-      }
+    fineShape(x, y, r + 7, face + Math.PI, (u, v) => {
+      const d = Math.hypot(u, v), phi = Math.atan2(v, u);
+      if (Math.abs(phi) > 0.96 || d < r - 2) return;
+      let out = r + 1;
+      for (const [p0, h] of [[-0.7, 5], [0, 3], [0.7, 5]]) out = Math.max(out, r + 1 + h * Math.max(0, 1 - Math.abs(phi - p0) / 0.26));
+      if (d > out) return;
+      if (d < r + 0.9 && Math.abs(phi) < 0.88) return '#c0203a';
+      return d > out - 0.5 ? '#4a1030' : '#12030a';   // a faint sheen on the outer edge
     }, '#05010a');
   }
 
-  // The Vampire Ball's face, turned toward its prey: a dark mouth with two fangs that
-  // reach past its rim (bloody while latched), and slanted glowing eyes.
+  // The Vampire Ball's face, turned toward its prey: an upper lip over two short canines
+  // that converge and poke just past its rim (red-tipped while latched), and glowing eyes.
   function drawVampFace(x, y, r, face, bloody) {
-    const m = r - 3.5;
-    fineShape(x, y, r + 5, face, (u, v) => {
+    const m = r - 2.5, len = 3.5;
+    fineShape(x, y, r + 3, face, (u, v) => {
       for (const s of [-1, 1]) {
-        const k = (u - m) / 7, dv = v - s * 1.3;
-        if (k >= 0 && k <= 1 && Math.abs(dv) <= 0.9 * (1 - k) + 0.1) {
+        const k = (u - m) / len;
+        if (k < 0 || k > 1) continue;
+        const dv = v - s * (1.6 - 0.35 * k * len);
+        if (Math.abs(dv) <= 1.1 * (1 - k)) {
           if (bloody && k > 0.6) return '#c0203a';
-          return dv * s < 0 ? '#f4f1ea' : '#c9c2b4';
+          return dv * s < 0 ? '#ffffff' : '#c9c2b4';
         }
       }
-      // the mouth: a dark crescent the fangs grow out of
-      if ((v / 2.6) ** 2 + ((u - m) / 1.1) ** 2 <= 1 && !((v / 2.2) ** 2 + ((u - m + 0.9) / 0.9) ** 2 < 1)) return '#12030a';
+      // upper lip arching over the fang roots
+      if (Math.abs(v) < 2.9 && Math.abs(u - (m - 0.35 + 0.09 * v * v)) < 0.26) return '#2a0410';
     }, '#12030a');
     // eyes: the brows slant down toward the middle of the face
     const eyes = [-0.95, 0.95].map(off => ({ x: x + Math.cos(face + off) * (r - 4), y: y + Math.sin(face + off) * (r - 4) }));
@@ -2909,18 +2922,28 @@
     }
   }
 
-  // Magnet field lines flowing inward while it pulls.
+  // Magnet field while it pulls: streaks rushing in toward the magnet, bright at the head,
+  // plus a faint dashed ring showing how far the pull reaches.
   function drawMagnetField(b) {
     if (!b.alive || !b.type.magnet || !b.pulling) return;
     const R = b.type.magnet.range;
     const now = performance.now() / 1000;
-    for (let i = 0; i < 16; i++) {
-      const a = i / 16 * Math.PI * 2;
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = '#7fb2ff';
+    const n = Math.round(R * Math.PI * 2 / 4);
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2;
+      ctx.fillRect(Math.round(b.x + Math.cos(a) * R), Math.round(b.y + Math.sin(a) * R), 1, 1);
+    }
+    for (let i = 0; i < 24; i++) {
+      const a = i / 24 * Math.PI * 2 + i * 0.13;
       const f = 1 - ((now * 0.9 + i * 0.37) % 1);   // moves from the edge toward the magnet
       const rr = b.r + 3 + (R - b.r) * f;
-      ctx.globalAlpha = 0.25 + 0.6 * (1 - f);
+      const c = Math.cos(a), s = Math.sin(a);
+      ctx.globalAlpha = 0.2 + 0.7 * (1 - f);
       ctx.fillStyle = i % 2 ? '#7fb2ff' : '#ff7a7a';
-      ctx.fillRect(Math.round(b.x + Math.cos(a) * rr), Math.round(b.y + Math.sin(a) * rr), 2, 2);
+      fineLine(b.x + c * rr, b.y + s * rr, b.x + c * (rr + 3), b.y + s * (rr + 3), 2);
+      ctx.fillStyle = '#ffffff'; fpx(b.x + c * rr, b.y + s * rr, 2, 2);
     }
     ctx.globalAlpha = 1;
   }
@@ -2968,18 +2991,19 @@
     }
   }
 
-  // Balloon string trailing behind it.
+  // Balloon string: it always hangs from the knot at the bottom, leaning away from the motion.
   function drawString(b) {
     if (!b.alive || !b.type.knot) return;
     const sp = Math.hypot(b.vx, b.vy) || 1;
-    const ux = -b.vx / sp, uy = -b.vy / sp;   // trails opposite to its motion (straight down when still)
-    const bx = ux || 0, by = (sp > 1 ? uy : 1);
-    ctx.fillStyle = '#f4f1ee';
-    let px = b.x + bx * (b.r + 1), py = b.y + by * (b.r + 1);
+    const lean = sp > 1 ? -b.vx / sp * 0.5 : 0;
+    const L = Math.hypot(lean, 1), bx = lean / L, by = 1 / L;
+    let px = b.x, py = b.y + b.r + 1;
     for (let i = 1; i <= 12; i++) {
       const w = Math.sin(performance.now() / 260 + i * 0.55) * 1.1 * (i / 12);   // a gentle sway, stronger at the end
-      const nx = b.x + bx * (b.r + 1 + i * 1.3) - by * w, ny = b.y + by * (b.r + 1 + i * 1.3) + bx * w;
+      const nx = b.x + bx * i * 1.3 - by * w, ny = b.y + b.r + 1 + by * i * 1.3 + bx * w;
+      ctx.fillStyle = '#f4f1ee';
       fineLine(px, py, nx, ny);
+      if (i % 3 === 0) { ctx.fillStyle = '#9aa1ab'; fpx(nx + 0.5, ny); }
       px = nx; py = ny;
     }
   }
@@ -3024,11 +3048,10 @@
       // warning ring
       ctx.globalAlpha = blink ? 0.9 : 0.45;
       ctx.fillStyle = '#ff7a3d';
-      const dots = 160;
+      const dots = Math.round(m.radius * Math.PI * 2 * RES / 3);   // a fine dot every 3 hi-px
       for (let i = 0; i < dots; i++) {
-        if (i % 4 === 3) continue;   // dashed
         const a = i / dots * Math.PI * 2;
-        ctx.fillRect(Math.round(mb.x + Math.cos(a) * m.radius), Math.round(mb.y + Math.sin(a) * m.radius), 1, 1);
+        fpx(mb.x + Math.cos(a) * m.radius, mb.y + Math.sin(a) * m.radius);
       }
       // the danger zone fills in as the fuse burns down
       const k = 1 - mb.fuse / m.fuse;
@@ -3240,7 +3263,7 @@
 
   // The side marker: a small chevron pointing down at the ball, in the side's color.
   function drawMarker(b) {
-    const cx = b.x, cy = b.y - b.r - (b.type.cap ? 8 : b.type.cross ? 5 : 3.5);   // clear of a fuse or halo
+    const cx = b.x, cy = b.y - b.r - (b.type.cap ? 8 : b.type.cross ? 5 : b.type.eyes ? 6 : 3.5);   // clear of a fuse, halo or hourglass
     fineShape(cx, cy, 4, 0, (u, v) => v >= -1.5 && v <= 1.5 && Math.abs(u) <= 2.5 * (1.5 - v) / 3 + 0.01 ? SIDES[b.side].color : null, '#0a1020');
   }
 
@@ -3309,6 +3332,8 @@
     tctx.fillStyle = color;
     tctx.fillRect(0, 0, spr.width, spr.height);
     tctx.globalCompositeOperation = 'source-over';
+    // keep the dark outline ring, so even a white hit frame keeps the ball's silhouette
+    if (spr.outline) tctx.drawImage(spr.outline, 0, 0);
     tintBuf.size = spr.size;   // world size travels with the pixels
     return tintBuf;
   }
@@ -3323,26 +3348,38 @@
       return;
     }
     if (b.flash > 0.12) return drawBall(b, 'rgba(255,255,255,0.9)');   // the hit frame: a white silhouette
-    if (b.flash > 0) return drawBall(b, 'rgba(255,70,70,0.75)');
+    if (b.flash > 0.04) return drawBall(b, 'rgba(255,60,60,0.38)');   // a short red phase, light enough that the shading shows through
     if (b.type.bomb && b.fuse < 1 && Math.floor(performance.now() / 80) % 2) return drawBall(b, 'rgba(255,40,40,0.35)');
     drawBall(b);
   }
 
-  // Each side's panel sits on a dark plate so it reads over the clouds. The plate is sized
-  // from what the panel held last frame (its lines come and go).
-  const panelBox = [{ w: 72, bottom: 100 }, { w: 72, bottom: 100 }];
+  // Each side's panel sits on a dark plate so it reads over the clouds. The plate is a fixed
+  // width (it must stay clear of the arena); its height follows last frame's lines.
+  const PANEL_W = 72;   // widest line, in world px (18 chars)
+  const panelBox = [{ bottom: 100 }, { bottom: 100 }];
+  // Split a line that's too wide for the panel at its last fitting space.
+  function wrapPanel(txt) {
+    const out = [];
+    while (textWidth(txt) > PANEL_W) {
+      let cut = txt.lastIndexOf(' ', Math.floor((PANEL_W + 1) / 4));
+      if (cut <= 0) cut = Math.floor((PANEL_W + 1) / 4);
+      out.push(txt.slice(0, cut).trimEnd());
+      txt = txt.slice(cut).trimStart();
+    }
+    out.push(txt);
+    return out;
+  }
   function drawPanel(ball, x, alignRight) {
     const side = SIDES[ball.side];
     const t = ball.type;
-    const box = panelBox[ball.side], used = { w: 64, bottom: 60 };
+    const box = panelBox[ball.side], used = { bottom: 60 };
     const text = (str, tx, ty, col) => {
-      used.w = Math.max(used.w, textWidth(String(str)));
       used.bottom = Math.max(used.bottom, ty + 5);
       drawText(str, tx, ty, col);
     };
     {
-      const bx0 = alignRight ? x - box.w - 4 : x - 4, bw0 = box.w + 8, by0 = 2, bh0 = box.bottom + 3 - by0;
-      ctx.fillStyle = 'rgba(10,16,32,0.55)'; ctx.fillRect(bx0 + 1, by0, bw0 - 2, bh0); ctx.fillRect(bx0, by0 + 1, bw0, bh0 - 2);
+      const bx0 = alignRight ? x - PANEL_W - 4 : x - 4, bw0 = PANEL_W + 8, by0 = 2, bh0 = box.bottom + 3 - by0;
+      ctx.fillStyle = 'rgba(12,19,38,0.86)'; ctx.fillRect(bx0 + 1, by0, bw0 - 2, bh0); ctx.fillRect(bx0, by0 + 1, bw0, bh0 - 2);
       ctx.fillStyle = '#30487a';
       ctx.fillRect(bx0 + 1, by0, bw0 - 2, 1); ctx.fillRect(bx0 + 1, by0 + bh0 - 1, bw0 - 2, 1);
       ctx.fillRect(bx0, by0 + 1, 1, bh0 - 2); ctx.fillRect(bx0 + bw0 - 1, by0 + 1, 1, bh0 - 2);
@@ -3409,27 +3446,33 @@
     if (t.zap) info.push(['ZAP IN ' + Math.max(0, ball.zapT).toFixed(1) + 'S', '#ffe14d']);
     if (t.slime) {
       const n = balls.filter(b => b.side === ball.side && b.alive).length;
-      info.push(['SLIMES ' + n + '  SPLIT ' + (ball.gen < t.slime.splitBelow.length ? 'UNDER ' + t.slime.splitBelow[ball.gen] : 'DONE'), '#c6f9a8']);
+      info.push(['SLIMES ' + n, '#c6f9a8']);
+      info.push([ball.gen < t.slime.splitBelow.length ? 'SPLIT <' + t.slime.splitBelow[ball.gen] : 'SPLIT DONE', '#c6f9a8']);
     }
-    if (t.zone) info.push(['ZONES ' + zones.filter(z => z.owner === ball).length + '/' + t.zone.max + (ball.zoneStrand ? ' +DRAWING' : ''), '#ff7a7a']);
+    if (t.zone) info.push(['ZONES ' + zones.filter(z => z.owner === ball).length + '/' + t.zone.max + (ball.zoneStrand ? ' DRAWING' : ''), '#ff7a7a']);
     if (ball.inZone && ball.alive) info.push(['IN A ZONE!', '#ff4f4f']);
     if (t.gun) info.push(ball.reload > 0 ? ['RELOADING ' + ball.reload.toFixed(1) + 'S', '#e8c48a'] : ['LOADED', '#ffe14d']);
     if (t.wcd && grid) info.push(['BOXES LEFT ' + grid.cells.filter(c => !c.used).length + '/25', '#9fc4ff']);
-    if (t.magnet) info.push(ball.pulling ? ['PULLING - BLAST IN ' + Math.max(0, ball.magT).toFixed(1) + 'S', '#7fb2ff'] : ['PULL IN ' + Math.max(0, ball.magT).toFixed(1) + 'S', '#ff7a7a']);
+    if (t.magnet) {
+      if (ball.pulling) info.push(['PULLING!', '#7fb2ff'], ['BLAST IN ' + Math.max(0, ball.magT).toFixed(1) + 'S', '#7fb2ff']);
+      else info.push(['PULL IN ' + Math.max(0, ball.magT).toFixed(1) + 'S', '#ff7a7a']);
+    }
     if (t.glass) info.push(['SHARDS ' + shards.filter(sh => sh.owner === ball).length + '/' + t.glass.max, '#bfeeff']);
     if (t.balloon) info.push(['SIZE ' + Math.round(ball.inflate * 100) + '%  HIT ' + baseDamagePreview(ball), '#ff8ac0']);
     if (ball.bleed > 0) info.push(['BLEEDING ' + ball.bleed.toFixed(1) + 'S', '#ff4f6d']);
     if (t.healer) info.push(['HEALS ' + heals.filter(h => h.owner === ball).length + '/' + t.healer.max, '#5ee07a']);
     if (t.chains) {
       const mine = chains.filter(c => c.owner === ball);
-      info.push(['CHAINS ' + mine.length + '/' + t.chains.max + ' (' + mine.filter(c => c.target).length + ' ON)', '#c9ced6']);
+      info.push(['CHAINS ' + mine.length + '/' + t.chains.max + ' ON ' + mine.filter(c => c.target).length, '#c9ced6']);
       if (ball.chainT > 0) info.push(['LOCKED ' + ball.chainT.toFixed(1) + 'S', '#ffe14d']);
     }
     if (t.shocker) info.push(ball.charged > 0 ? ['CHARGED ' + ball.charged.toFixed(1) + 'S', '#ffffff'] : ['CHARGE IN ' + Math.max(0, ball.shockT).toFixed(1) + 'S', '#7fd8ff']);
     if (ball.chill > 0) info.push(['SLOWED ' + ball.chill.toFixed(1) + 'S', '#9fe3f5']);
     for (const [txt, col] of info) {
-      text(txt, alignRight ? x - textWidth(txt) : x, line, col);
-      line += 8;
+      for (const part of wrapPanel(txt)) {
+        text(part, alignRight ? x - textWidth(part) : x, line, col);
+        line += 8;
+      }
     }
     if (t.vampire) {
       const txt = ball.latch ? 'DRAINING ' + Math.max(0, ball.latch.t).toFixed(1) + 'S'
@@ -3459,7 +3502,7 @@
     }
     if (t.web) {
       const mine = webs ? webs.filter(wb => wb.owner === ball).length : 0;
-      const webText = 'WEBS ' + mine + '/' + t.web.max + (ball.strand ? ' +SPINNING' : '');
+      const webText = 'WEBS ' + mine + '/' + t.web.max + (ball.strand ? ' SPINNING' : '');
       text(webText, alignRight ? x - textWidth(webText) : x, line, '#e6e9f2');
       line += 8;
     }
@@ -3468,9 +3511,9 @@
     text(speed, alignRight ? x - textWidth(speed) : x, line, ball.stuck > 0 ? '#ffffff' : '#9fe6ff');
     if (state === 'aim') {
       const hint = 'CLICK TO CHANGE';
-      text(hint, alignRight ? x - textWidth(hint) : x, 94, '#9fb6dc');
+      text(hint, alignRight ? x - textWidth(hint) : x, line + 10, '#9fb6dc');   // right under the stats
     }
-    box.w = used.w; box.bottom = used.bottom;
+    box.bottom = used.bottom;
   }
 
   function drawAimArrow(me) {
@@ -3585,18 +3628,19 @@
       const compact = c.h < 30;
       const k = compact ? 0.8 : 1;
       const bob = hot && Math.floor(performance.now() / 250) % 2 ? -1 : 0;   // the hovered ball bobs
-      const cx = c.x + (compact ? 13 : 16), cy = y + Math.floor(c.h / 2) + (compact ? 1 : 0) + bob;
+      const halo = t.cross ? 2 : 0;   // the Healer's halo needs room above it
+      const cx = c.x + (compact ? 13 : 16), cy = y + Math.floor(c.h / 2) + (compact ? 1 : 0) + bob + halo;
       const rr = t.radius * k;
       ctx.save();
-      ctx.beginPath(); ctx.rect(c.x, y, compact ? 26 : 32, c.h); ctx.clip();
-      // a portrait well in the ball's own dark color, so the grid is color-coded
-      const wr = Math.round(14 * k), wy = cy - bob;
+      ctx.beginPath(); ctx.rect(c.x, y, c.w, c.h); ctx.clip();   // legs and capes may reach under the stats
+      // a portrait well in the ball's own dark color, a 3 px halo around it that color-codes the grid
+      const wr = Math.round((t.radius + 3) * k), wy = cy - bob;
       for (let dy = -wr; dy <= wr; dy++) {
         const ww = Math.floor(Math.sqrt(wr * wr - dy * dy));
         const wo = Math.floor(Math.sqrt(Math.max(0, (wr - 1) * (wr - 1) - dy * dy)));
         ctx.fillStyle = t.colors.rim; ctx.fillRect(cx - ww, wy + dy, ww * 2, 1);
         ctx.fillStyle = '#0a1020'; ctx.fillRect(cx - wo, wy + dy, wo * 2, 1);
-        ctx.globalAlpha = 0.4; ctx.fillStyle = t.colors.dark; ctx.fillRect(cx - wo, wy + dy, wo * 2, 1); ctx.globalAlpha = 1;
+        ctx.globalAlpha = 0.55; ctx.fillStyle = t.colors.dark; ctx.fillRect(cx - wo, wy + dy, wo * 2, 1); ctx.globalAlpha = 1;
       }
       if (t.weapon) {
         const ang = -Math.PI * 0.75 - (hot ? performance.now() / 300 : 0);
@@ -3611,10 +3655,10 @@
       if (t.studs) drawStudRivets(cx, cy, rr, hot ? performance.now() / 300 : 0);
       if (t.fangs) drawVampFace(cx, cy, rr, 0, hot);
       ctx.restore();
-      // its number key, on a small dark tab
+      // its number key, on a small dark tab in the bottom-left corner
       const num = String(i + 1);
-      ctx.fillStyle = '#0a1020'; ctx.fillRect(c.x, y, textWidth(num) + 4, 8);
-      drawText(num, c.x + 2, y + 2, hot ? '#ffd23f' : '#7f93b8', 1, null);
+      ctx.fillStyle = '#0a1020'; ctx.fillRect(c.x, y + c.h - 8, textWidth(num) + 4, 8);
+      drawText(num, c.x + 2, y + c.h - 6, hot ? '#ffd23f' : '#7f93b8', 1, null);
       // stats on the right
       const hit = t.rng ? t.rng.min + '-' + t.rng.max
         : t.damageRange ? t.damageRange[0] + '-' + t.damageRange[1]
@@ -3699,7 +3743,7 @@
     for (const p of popups) {
       const fade = p.t > 0.5 ? (0.8 - p.t) / 0.3 : 1;
       ctx.globalAlpha = Math.max(0, fade);
-      drawTextCentered(p.text, p.x, Math.round(p.y), p.color);
+      drawTextCentered(p.text, p.x, p.y, p.color, 1, undefined, true);
     }
     ctx.globalAlpha = 1;
     ctx.restore();
